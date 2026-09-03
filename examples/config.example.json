@@ -1,0 +1,6 @@
+{
+  "inboxId": "12345",
+  "limit": 20,
+  "senderContains": ["Example Sender"],
+  "apply": false
+}

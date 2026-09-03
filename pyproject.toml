@@ -1,0 +1,10 @@
+[project]
+name = "mailmate-cli"
+version = "0.6.0"
+description = "Quiet local CLI for MailMate mail inspection and safe paper-original discard."
+requires-python = ">=3.11"
+license = "AGPL-3.0-or-later"
+authors = [{ name = "Vec" }]
+
+[project.scripts]
+mailmate = "mailmate_cli.cli:main"
