@@ -1,6 +1,14 @@
 import unittest
 
-from mailmate_cli.parser import discover_discard_actions, parse_mail_detail, parse_inbox
+from mailmate_cli.parser import (
+    discover_discard_actions,
+    parse_activities,
+    parse_bills_csv,
+    parse_inbox,
+    parse_mail_detail,
+    parse_mailing_address,
+    parse_note_from_edit,
+)
 
 
 UNOPENED_DETAIL = """
@@ -250,6 +258,52 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(detail.status, "開封待ち")
         self.assertTrue(detail.scan_requested)
         self.assertTrue(detail.scan_missing)
+
+    def test_parse_mailing_address(self):
+        html = """
+        <html><body>
+          <input id="mail_in_address_input" value="user123.456" />
+          <div data-clipboard-text="user123.456@pm.mailmate.jp"></div>
+          <div>(ID 48713-82433), Yellow Base Tenjin 3F, 3-16-17 Tenjin, Chuo-ku, Fukuoka, Japan 810-0001</div>
+          <div>〒 810-0001 福岡市中央区天神3-16-17 イエローベース天神3F (管理番号 : 48713-82433)</div>
+        </body></html>
+        """
+        addr = parse_mailing_address(html, inbox_id="456")
+        self.assertEqual(addr.inbox_id, "456")
+        self.assertEqual(addr.mail_in_address, "user123.456@pm.mailmate.jp")
+        self.assertEqual(addr.invoice_address, "user123.456@invoice.mailmate.jp")
+        self.assertEqual(addr.receipt_address, "user123.456@receipt.mailmate.jp")
+        self.assertEqual(addr.postal_code, "810-0001")
+        self.assertEqual(addr.management_id, "48713-82433")
+
+    def test_parse_activities(self):
+        html = """
+        <div class="activity">
+          <div class="activity-description">
+            <strong>MailMate</strong>が郵便物を開封しました
+          </div>
+          <div class="activity-timestamp">2026/08/13 10:16（日本時間）</div>
+        </div>
+        """
+        acts = parse_activities(html)
+        self.assertEqual(len(acts), 1)
+        self.assertEqual(acts[0].actor, "MailMate")
+        self.assertIn("開封しました", acts[0].description)
+        self.assertEqual(acts[0].timestamp, "2026/08/13 10:16（日本時間）")
+
+    def test_parse_bills_csv(self):
+        csv_text = "支払期日,支払日,品目名,請求金額,手数料,カテゴリ\n2026-06-15,,水道代 [郵便物 #12345],\"1,500円\",0円,水道光熱費\n"
+        bills = parse_bills_csv(csv_text)
+        self.assertEqual(len(bills), 1)
+        self.assertEqual(bills[0].vendor, "水道代 [郵便物 #12345]")
+        self.assertEqual(bills[0].linked_mail_id, "12345")
+        self.assertEqual(bills[0].amount, "1,500円")
+        self.assertEqual(bills[0].due_date, "2026-06-15")
+        self.assertEqual(bills[0].status, "unpaid")
+
+    def test_parse_note_from_edit(self):
+        html = "<textarea name=\"mail_postal_mail[notes]\">hello memo</textarea>"
+        self.assertEqual(parse_note_from_edit(html), "hello memo")
 
 
 if __name__ == "__main__":

@@ -121,6 +121,44 @@ Mark mail status (bill, receipt, unread):
 ./bin/mailmate mark-unread 216635 --apply --yes
 ```
 
+Display registered physical mailing address and forwarding email accounts:
+
+```bash
+./bin/mailmate address
+./bin/mailmate --json address
+```
+
+Read or update mail notes/memos:
+
+```bash
+# Read current memo
+./bin/mailmate note 216635
+
+# Update memo (dry run)
+./bin/mailmate note 216635 "重要: 契約書控え"
+
+# Actually apply update
+./bin/mailmate note 216635 "重要: 契約書控え" --apply --yes
+```
+
+View mail activity audit timeline:
+
+```bash
+./bin/mailmate timeline 216635
+./bin/mailmate --json activities 216635
+```
+
+Inspect and export extracted bills / invoices:
+
+```bash
+# List all bills and amounts
+./bin/mailmate bills
+./bin/mailmate bills --unpaid-only
+
+# Export complete ledger to CSV
+./bin/mailmate bills --export ~/Downloads/mailmate_bills.csv
+```
+
 Login or refresh the cookie jar:
 
 ```bash

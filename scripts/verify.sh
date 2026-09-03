@@ -156,6 +156,27 @@ if [ "$no_login_archive_code" -ne 77 ]; then
   exit 1
 fi
 
+set +e
+note_guard_output=$(python3 -m mailmate_cli --json note 198843 "sample note" --apply 2>&1)
+note_guard_code=$?
+no_login_address_output=$(python3 -m mailmate_cli --cookie-jar "$tmp_dir/no-login-cookies.txt" --no-login --json address 2>&1)
+no_login_address_code=$?
+no_login_bills_output=$(python3 -m mailmate_cli --cookie-jar "$tmp_dir/no-login-cookies.txt" --no-login --json bills 2>&1)
+no_login_bills_code=$?
+set -e
+if [ "$note_guard_code" -ne 2 ]; then
+  printf 'Expected note apply guard to exit 2, got %s\n' "$note_guard_code" >&2
+  exit 1
+fi
+if [ "$no_login_address_code" -ne 77 ]; then
+  printf 'Expected no-login address smoke to exit 77, got %s\n' "$no_login_address_code" >&2
+  exit 1
+fi
+if [ "$no_login_bills_code" -ne 77 ]; then
+  printf 'Expected no-login bills smoke to exit 77, got %s\n' "$no_login_bills_code" >&2
+  exit 1
+fi
+
 python3 -m mailmate_cli \
   --profile profile2 \
   --json \

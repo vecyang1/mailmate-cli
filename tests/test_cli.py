@@ -458,6 +458,119 @@ class CliTests(unittest.TestCase):
             mock_c.return_value.mark_receipt.assert_called_once()
             mock_c.return_value.mark_unread.assert_called_once()
 
+    def test_cmd_address(self):
+        from mailmate_cli.cli import cmd_address
+        from mailmate_cli.models import MailingAddress
+
+        mock_addr = MailingAddress(
+            inbox_id="82433",
+            mail_in_address="test@pm.mailmate.jp",
+            invoice_address="test@invoice.mailmate.jp",
+            receipt_address="test@receipt.mailmate.jp",
+            japanese_address="〒 810-0001 福岡市中央区天神3-16-17",
+            english_address="(ID 48713), Tenjin, Japan",
+            postal_code="810-0001",
+            management_id="48713",
+        )
+        args = Namespace(
+            base_url="https://mailmate.jp",
+            cookie_jar="/tmp/mock_cookies.txt",
+            no_login=True,
+            inbox_id=None,
+            json=True,
+            quiet=False,
+        )
+        with patch("mailmate_cli.cli._ensure_auth"), patch("mailmate_cli.cli._client") as mock_c:
+            mock_c.return_value.mailing_address.return_value = mock_addr
+            buf = StringIO()
+            with redirect_stdout(buf):
+                self.assertEqual(cmd_address(args), 0)
+            self.assertIn("test@pm.mailmate.jp", buf.getvalue())
+
+    def test_cmd_note_read_and_update(self):
+        from mailmate_cli.cli import cmd_note
+
+        args_read = Namespace(
+            base_url="https://mailmate.jp",
+            cookie_jar="/tmp/mock_cookies.txt",
+            no_login=True,
+            mail_id="216635",
+            text=None,
+            apply=False,
+            yes=False,
+            json=True,
+            quiet=False,
+        )
+        args_update = Namespace(
+            base_url="https://mailmate.jp",
+            cookie_jar="/tmp/mock_cookies.txt",
+            no_login=True,
+            mail_id="216635",
+            text="new note text",
+            apply=True,
+            yes=True,
+            json=True,
+            quiet=False,
+        )
+        with patch("mailmate_cli.cli._ensure_auth"), patch("mailmate_cli.cli._client") as mock_c:
+            mock_c.return_value.get_note.return_value = "current note"
+            buf = StringIO()
+            with redirect_stdout(buf):
+                self.assertEqual(cmd_note(args_read), 0)
+            self.assertIn("current note", buf.getvalue())
+
+            buf2 = StringIO()
+            with redirect_stdout(buf2):
+                self.assertEqual(cmd_note(args_update), 0)
+            mock_c.return_value.set_note.assert_called_once_with("216635", "new note text")
+            self.assertIn("new note text", buf2.getvalue())
+
+    def test_cmd_timeline(self):
+        from mailmate_cli.cli import cmd_timeline
+        from mailmate_cli.models import ActivityItem
+
+        mock_acts = [
+            ActivityItem(timestamp="2026/08/13 10:16", actor="MailMate", description="開封しました")
+        ]
+        args = Namespace(
+            base_url="https://mailmate.jp",
+            cookie_jar="/tmp/mock_cookies.txt",
+            no_login=True,
+            mail_id="216635",
+            json=True,
+            quiet=False,
+        )
+        with patch("mailmate_cli.cli._ensure_auth"), patch("mailmate_cli.cli._client") as mock_c:
+            mock_c.return_value.activities.return_value = mock_acts
+            buf = StringIO()
+            with redirect_stdout(buf):
+                self.assertEqual(cmd_timeline(args), 0)
+            self.assertIn("開封しました", buf.getvalue())
+
+    def test_cmd_bills(self):
+        from mailmate_cli.cli import cmd_bills
+        from mailmate_cli.models import BillItem
+
+        mock_bills = [
+            BillItem(vendor="水道局", due_date="2026-07-01", amount="1,000円", linked_mail_id="999", status="unpaid")
+        ]
+        args = Namespace(
+            base_url="https://mailmate.jp",
+            cookie_jar="/tmp/mock_cookies.txt",
+            no_login=True,
+            export=None,
+            unpaid_only=False,
+            json=True,
+            quiet=False,
+        )
+        with patch("mailmate_cli.cli._ensure_auth"), patch("mailmate_cli.cli._client") as mock_c:
+            mock_c.return_value.bills.return_value = mock_bills
+            buf = StringIO()
+            with redirect_stdout(buf):
+                self.assertEqual(cmd_bills(args), 0)
+            self.assertIn("水道局", buf.getvalue())
+            self.assertIn("1,000円", buf.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

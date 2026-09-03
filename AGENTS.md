@@ -13,6 +13,10 @@ Runs locally against MailMate session cookies, with no external server or teleme
 - `mailmate download <id> [--output PATH]`: download scanned multi-page PDF.
 - `mailmate archive <id> [--apply --yes]`: archive processed mail.
 - `mailmate mark-bill / mark-receipt / mark-unread <id> [--apply --yes]`: fast triage tags.
+- `mailmate address`: retrieve registered physical Japanese/English postal address and inbound digital forwarding emails.
+- `mailmate note <id> [TEXT] [--apply --yes]`: read or update mail memo note.
+- `mailmate timeline <id>` (alias `activities`): retrieve full audit timeline events with timestamps and actors.
+- `mailmate bills [--unpaid-only] [--export PATH]`: inspect and export extracted financial invoices and vouchers.
 - `mailmate inspect <id>`: check safe discard and open scan eligibility.
 - `mailmate abandon <id> [--apply --yes]`: discard paper original (only if scanned and eligible).
 - `mailmate sweep [--inbox-id ID] [--sender-contains S] [--apply --yes]`: batch discard eligible mail.
