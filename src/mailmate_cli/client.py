@@ -8,6 +8,7 @@ import sys
 from dataclasses import dataclass
 from http.cookiejar import MozillaCookieJar
 from pathlib import Path
+from typing import Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin
 from urllib.request import HTTPCookieProcessor, HTTPSHandler, Request, build_opener
@@ -90,11 +91,14 @@ class MailMateClient:
         final_url = response.geturl()
         return content.decode(charset, errors="replace"), final_url
 
-    def ensure_authenticated(self, credentials: Credentials | None = None) -> None:
+    def ensure_authenticated(
+        self, credentials_or_getter: Credentials | None | Callable[[], Credentials | None] = None
+    ) -> None:
         html, final_url = self.request("/app/mails")
         if not _is_sign_in_page(html, final_url):
             self.save_cookies()
             return
+        credentials = credentials_or_getter() if callable(credentials_or_getter) else credentials_or_getter
         if credentials is None:
             raise AuthRequiredError("MailMate login required. Provide MAILMATE_EMAIL/MAILMATE_PASSWORD or --op-item.")
         self.login(credentials)

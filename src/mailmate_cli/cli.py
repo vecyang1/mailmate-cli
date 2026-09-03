@@ -453,7 +453,7 @@ def _credentials(args: argparse.Namespace) -> Credentials | None:
 
 
 def _ensure_auth(args: argparse.Namespace, client: MailMateClient) -> None:
-    client.ensure_authenticated(None if args.no_login else _credentials(args))
+    client.ensure_authenticated(None if args.no_login else lambda: _credentials(args))
 
 
 def _emit(args: argparse.Namespace, payload: object, human: str) -> None:
@@ -550,9 +550,9 @@ def build_doctor_report(args: argparse.Namespace) -> dict[str, object]:
     }
     ok = cookie_present or (email_present and password_present) or op_item_present
     next_action = (
-        "Run inspect/abandon dry-run."
+        "Run list/read/sweep dry-run."
         if ok
-        else f"Set MAILMATE_EMAIL and {password_env}, create {DEFAULT_ENV_FILE}, or pass --op-item."
+        else f"Set MAILMATE_EMAIL and {password_env}, create {env_path or DEFAULT_ENV_FILE}, or pass --op-item."
     )
     return {"ok": ok, "checks": checks, "nextAction": next_action}
 
