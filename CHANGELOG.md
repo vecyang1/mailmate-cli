@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0 - 2026-09-03
+
+- Driven by live Chrome DevTools visual and DOM tree inspection:
+  - Added `address` command: displays registered physical postal address (Japanese & English), postal code, management ID, and inbound forwarding email addresses (`@pm.mailmate.jp`, `@invoice.mailmate.jp`, `@receipt.mailmate.jp`).
+  - Added `note` command: read or update mail memo notes (`mail_postal_mail[notes]`) with dry-run safety and `--apply --yes` guard. Live tested against MailMate Rails backend.
+  - Added `timeline` (alias `activities`) command: retrieves full audit log history of mail items (creation, scan request, scan completion, memo updates) with timestamps and actors.
+  - Added `bills` command: lists structured financial invoices and vouchers with vendor names, amounts, payment deadlines, and linked postal mail IDs. Supports direct ledger CSV export via `--export PATH`.
+- Expanded test suite to 63 unit tests and extended verification smokes in `scripts/verify.sh`.
+
 ## 0.8.0 - 2026-09-03
 
 - Added `open` (alias `request-scan`) command to request MailMate staff to open and scan unopened mail (`未開封`) with dry-run safety and `--apply --yes` guard.

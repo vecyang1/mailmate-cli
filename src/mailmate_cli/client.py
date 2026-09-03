@@ -12,10 +12,25 @@ from typing import Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urljoin, urlsplit, urlunsplit
 from urllib.request import HTTPCookieProcessor, HTTPSHandler, Request, build_opener
-
 from . import __version__
-from .models import DiscardAction, InboxItem, MailDetail
-from .parser import parse_html, parse_inbox, parse_mail_detail
+from .models import (
+    ActivityItem,
+    BillItem,
+    DiscardAction,
+    InboxItem,
+    MailDetail,
+    MailingAddress,
+)
+from .parser import (
+    _extract_meta_csrf,
+    parse_activities,
+    parse_bills_csv,
+    parse_html,
+    parse_inbox,
+    parse_mail_detail,
+    parse_mailing_address,
+    parse_note_from_edit,
+)
 
 
 DEFAULT_BASE_URL = "https://mailmate.jp"
@@ -257,6 +272,41 @@ class MailMateClient:
         html, final_url = self.request(action_url, method="POST", fields=fields, referer=ref)
         self.save_cookies()
         return html, final_url
+
+    def mailing_address(self, inbox_id: str | None = None) -> MailingAddress:
+        target_inbox = inbox_id or "82433"
+        html, _ = self.request(f"/app/inboxes/{target_inbox}/mailing_address")
+        return parse_mailing_address(html, inbox_id=target_inbox)
+
+    def activities(self, mail_id: str) -> list[ActivityItem]:
+        html, _ = self.request(f"/app/mails/{mail_id}/activities")
+        return parse_activities(html)
+
+    def get_note(self, mail_id: str) -> str:
+        html, _ = self.request(f"/app/mails/{mail_id}/edit")
+        return parse_note_from_edit(html)
+
+    def set_note(self, mail_id: str, note: str, referer: str | None = None) -> tuple[str, str]:
+        ref = referer or f"{self.base_url}/app/mails/{mail_id}/edit"
+        html_edit, _ = self.request(f"/app/mails/{mail_id}/edit")
+        csrf = _extract_meta_csrf(html_edit)
+        fields = {
+            "_method": "patch",
+            "authenticity_token": csrf or "",
+            "mail_postal_mail[notes]": note,
+        }
+        action_url = f"{self.base_url}/app/mails/{mail_id}"
+        html, final_url = self.request(action_url, method="POST", fields=fields, referer=ref)
+        self.save_cookies()
+        return html, final_url
+
+    def export_bills_csv(self) -> str:
+        csv_text, _ = self.request("/app/invoices/export")
+        return csv_text
+
+    def bills(self) -> list[BillItem]:
+        csv_text = self.export_bills_csv()
+        return parse_bills_csv(csv_text)
 
 
 def extract_text_from_pdf(pdf_bytes: bytes) -> str:

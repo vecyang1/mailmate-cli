@@ -5,7 +5,15 @@ from html import unescape
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
 
-from .models import DiscardAction, InboxItem, MailDetail, OpenScanAction
+from .models import (
+    ActivityItem,
+    BillItem,
+    DiscardAction,
+    InboxItem,
+    MailDetail,
+    MailingAddress,
+    OpenScanAction,
+)
 
 
 DISCARD_TERMS = ("破棄", "廃棄", "discard", "dispose", "abandon", "shred")
@@ -462,3 +470,78 @@ def _looks_scan_requested(value: str) -> bool:
             "danger",
         )
     )
+
+
+def parse_mailing_address(html: str, inbox_id: str = "82433") -> MailingAddress:
+    email_m = re.search(r'data-clipboard-text=["\']([^"\']+@pm\.mailmate\.jp)["\']', html)
+    email = email_m.group(1).strip() if email_m else ""
+    if not email:
+        input_m = re.search(r'id=["\']mail_in_address_input["\'][^>]*value=["\']([^"\']+)["\']', html)
+        if input_m:
+            email = f"{input_m.group(1).strip()}@pm.mailmate.jp"
+    prefix = email.split("@")[0] if "@" in email else ""
+
+    eng_m = re.search(r'\((ID\s+[^)]+)\),\s*Yellow Base[^\n<]+', html)
+    eng = eng_m.group(0).strip() if eng_m else ""
+
+    jp_m = re.search(r'〒\s*(\d{3}-\d{4})\s*([^\n<]+イエローベース[^\n<]+)', html)
+    jp = jp_m.group(0).strip() if jp_m else ""
+    postal = jp_m.group(1).strip() if jp_m else ""
+
+    mgmt_m = re.search(r'管理番号\s*:\s*([0-9-]+)', jp)
+    mgmt = mgmt_m.group(1).strip() if mgmt_m else ""
+
+    return MailingAddress(
+        inbox_id=inbox_id,
+        mail_in_address=email,
+        invoice_address=f"{prefix}@invoice.mailmate.jp" if prefix else "",
+        receipt_address=f"{prefix}@receipt.mailmate.jp" if prefix else "",
+        japanese_address=jp,
+        english_address=eng,
+        postal_code=postal,
+        management_id=mgmt,
+    )
+
+
+def parse_activities(html: str) -> list[ActivityItem]:
+    items: list[ActivityItem] = []
+    pattern = r'<div class=["\']activity-description["\']>(.*?)</div>\s*<div class=["\']activity-timestamp["\']>(.*?)</div>'
+    for desc_html, ts_html in re.findall(pattern, html, re.DOTALL):
+        desc_clean = normalize_space(re.sub(r'<[^>]+>', ' ', desc_html))
+        ts_clean = normalize_space(re.sub(r'<[^>]+>', ' ', ts_html))
+        actor_m = re.search(r'<strong>(.*?)</strong>', desc_html)
+        actor = normalize_space(re.sub(r'<[^>]+>', '', actor_m.group(1))) if actor_m else "User"
+        items.append(ActivityItem(timestamp=ts_clean, actor=actor, description=desc_clean))
+    return items
+
+
+def parse_bills_csv(csv_text: str) -> list[BillItem]:
+    import csv
+    import io
+
+    items: list[BillItem] = []
+    reader = csv.DictReader(io.StringIO(csv_text))
+    for row in reader:
+        due = (row.get("支払期日") or "")[:10] or None
+        vendor = (row.get("品目名") or "").strip()
+        amount = (row.get("請求金額") or "").strip()
+        category = (row.get("カテゴリ") or "").strip() or None
+        paid_date = (row.get("支払日") or "").strip()
+        mail_m = re.search(r'#(\d+)', vendor)
+        mail_id = mail_m.group(1) if mail_m else None
+        items.append(
+            BillItem(
+                vendor=vendor,
+                due_date=due,
+                amount=amount,
+                category=category,
+                linked_mail_id=mail_id,
+                status="paid" if paid_date else "unpaid",
+            )
+        )
+    return items
+
+
+def parse_note_from_edit(html: str) -> str:
+    m = re.search(r'<textarea[^>]*name=["\']mail_postal_mail\[notes\]["\'][^>]*>(.*?)</textarea>', html, re.DOTALL)
+    return unescape(m.group(1).strip()) if m else ""

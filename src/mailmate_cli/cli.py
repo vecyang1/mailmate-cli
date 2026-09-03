@@ -148,6 +148,26 @@ def build_parser() -> argparse.ArgumentParser:
     receipt_cmd.add_argument("--yes", action="store_true", help="Required with --apply.")
     receipt_cmd.set_defaults(func=cmd_mark_receipt)
 
+    address_cmd = sub.add_parser("address", help="Show MailMate mailing address and forwarding email accounts.")
+    address_cmd.add_argument("--inbox-id", default=None, help="Inbox ID.")
+    address_cmd.set_defaults(func=cmd_address)
+
+    note_cmd = sub.add_parser("note", help="Read or update a mail item's memo/note.")
+    note_cmd.add_argument("mail_id", help="MailMate mail ID.")
+    note_cmd.add_argument("text", nargs="?", default=None, help="New note text. If omitted, prints current note.")
+    note_cmd.add_argument("--apply", action="store_true", help="Actually update the note.")
+    note_cmd.add_argument("--yes", action="store_true", help="Required with --apply.")
+    note_cmd.set_defaults(func=cmd_note)
+
+    timeline_cmd = sub.add_parser("timeline", aliases=["activities"], help="Show audit timeline activity history for a mail item.")
+    timeline_cmd.add_argument("mail_id", help="MailMate mail ID.")
+    timeline_cmd.set_defaults(func=cmd_timeline)
+
+    bills_cmd = sub.add_parser("bills", help="List extracted bills and payment deadlines.")
+    bills_cmd.add_argument("--export", default=None, help="Path to export raw CSV ledger.")
+    bills_cmd.add_argument("--unpaid-only", action="store_true", default=False, help="Only show unpaid bills.")
+    bills_cmd.set_defaults(func=cmd_bills)
+
     init = sub.add_parser("init", help="Create safe local config scaffolding without credentials.")
     init.add_argument("--config", default=str(DEFAULT_CONFIG_FILE))
     init.add_argument("--env-sample", default=str(DEFAULT_ENV_FILE.with_name("env.sample")))
@@ -458,6 +478,123 @@ def cmd_mark_receipt(args: argparse.Namespace) -> int:
     }
     human = f"{result['decision']}: mail #{detail.mail_id} receipt"
     _emit(args, result, human)
+    return 0
+
+
+def cmd_address(args: argparse.Namespace) -> int:
+    client = _client(args)
+    _ensure_auth(args, client)
+    addr = client.mailing_address(getattr(args, "inbox_id", None))
+    row = {
+        "inboxId": addr.inbox_id,
+        "mailInAddress": addr.mail_in_address,
+        "invoiceAddress": addr.invoice_address,
+        "receiptAddress": addr.receipt_address,
+        "japaneseAddress": addr.japanese_address,
+        "englishAddress": addr.english_address,
+        "postalCode": addr.postal_code,
+        "managementId": addr.management_id,
+    }
+    human = (
+        f"MailMate Mailing Address (Inbox #{row['inboxId']}):\n"
+        f"  Japanese : {row['japaneseAddress']}\n"
+        f"  English  : {row['englishAddress']}\n"
+        f"  Inbound  : {row['mailInAddress']}\n"
+        f"  Invoice  : {row['invoiceAddress']}\n"
+        f"  Receipt  : {row['receiptAddress']}"
+    )
+    _emit(args, row, human)
+    return 0
+
+
+def cmd_note(args: argparse.Namespace) -> int:
+    client = _client(args)
+    _ensure_auth(args, client)
+    current_note = client.get_note(args.mail_id)
+    if args.text is None:
+        row = {
+            "mailId": args.mail_id,
+            "note": current_note,
+        }
+        human = f"mail #{args.mail_id} note: {current_note or '(empty)'}"
+        _emit(args, row, human)
+        return 0
+
+    require_apply_confirmation(apply=args.apply, yes=args.yes)
+    applied = False
+    if args.apply:
+        client.set_note(args.mail_id, args.text)
+        applied = True
+
+    row = {
+        "mailId": args.mail_id,
+        "previousNote": current_note,
+        "note": args.text if applied else current_note,
+        "proposedNote": args.text,
+        "decision": "updated" if applied else "dry_run",
+    }
+    human = f"{row['decision']}: mail #{args.mail_id} note -> {args.text}"
+    _emit(args, row, human)
+    return 0
+
+
+def cmd_timeline(args: argparse.Namespace) -> int:
+    client = _client(args)
+    _ensure_auth(args, client)
+    acts = client.activities(args.mail_id)
+    rows = [
+        {
+            "timestamp": a.timestamp,
+            "actor": a.actor,
+            "description": a.description,
+        }
+        for a in acts
+    ]
+    lines = [f"Timeline for mail #{args.mail_id} ({len(rows)} events):"]
+    for r in rows:
+        lines.append(f"  {r['timestamp']} | {r['actor']} | {r['description']}")
+    human = "\n".join(lines)
+    _emit(args, rows, human)
+    return 0
+
+
+def cmd_bills(args: argparse.Namespace) -> int:
+    client = _client(args)
+    _ensure_auth(args, client)
+    if getattr(args, "export", None):
+        csv_text = client.export_bills_csv()
+        dest = Path(args.export).expanduser()
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(csv_text, encoding="utf-8")
+        row = {"exportedPath": str(dest.resolve()), "sizeBytes": len(csv_text.encode("utf-8"))}
+        _emit(args, row, f"Exported bills ledger to {row['exportedPath']}")
+        return 0
+
+    bill_items = client.bills()
+    if getattr(args, "unpaid_only", False):
+        bill_items = [b for b in bill_items if b.status == "unpaid"]
+
+    rows = [
+        {
+            "vendor": b.vendor,
+            "dueDate": b.due_date,
+            "amount": b.amount,
+            "linkedMailId": b.linked_mail_id,
+            "status": b.status,
+            "category": b.category,
+        }
+        for b in bill_items
+    ]
+    lines = [f"DUE DATE    AMOUNT       MAIL#    STATUS  VENDOR"]
+    lines.append("-" * 72)
+    for r in rows:
+        due = r["dueDate"] or "—"
+        amt = r["amount"].ljust(12)
+        mid = (r["linkedMailId"] or "—").ljust(7)
+        st = r["status"].ljust(7)
+        lines.append(f"{due:<11} {amt} {mid} {st} {r['vendor']}")
+    human = "\n".join(lines)
+    _emit(args, rows, human)
     return 0
 
 

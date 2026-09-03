@@ -65,3 +65,32 @@ class OpenScanDecision:
     reason: str
     action: OpenScanAction | None = None
     message: str = ""
+
+
+@dataclass(frozen=True)
+class MailingAddress:
+    inbox_id: str
+    mail_in_address: str
+    invoice_address: str
+    receipt_address: str
+    japanese_address: str
+    english_address: str
+    postal_code: str
+    management_id: str
+
+
+@dataclass(frozen=True)
+class ActivityItem:
+    timestamp: str
+    actor: str
+    description: str
+
+
+@dataclass(frozen=True)
+class BillItem:
+    vendor: str
+    due_date: str | None
+    amount: str
+    category: str | None = None
+    linked_mail_id: str | None = None
+    status: str = "unpaid"
