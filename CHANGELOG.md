@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0 - 2026-09-03
+
+- Added `list` command to read and filter postal mail items directly from `https://mailmate.jp/app/mails` (`--limit`, `--sender`, `--status`, `--unread-only`, `--json`).
+- Added `read` command to inspect mail metadata, download scanned PDFs, and extract document text/OCR directly in the terminal (`--text`, `--download-dir`, `--json`).
+- Added PDF text extraction via PyMuPDF (`fitz`) and `pdftotext` fallback.
+- Added multi-profile support via `--profile <name>` (e.g. `profile2`), isolating config, env, cookie jar, audit log, and run lock under `profiles/<name>/`.
+- Added lazy credential resolution: existing valid cookies in `cookies.txt` are checked before attempting 1Password item resolution, avoiding unnecessary Touch ID prompts.
+- Added project bridge card `PROJECT_LINKS.md` with cross-root governance compliance.
+- Expanded test suite to 43 unit tests and verified live operations against real MailMate web endpoints.
+
 ## 0.6.0 - 2026-06-23
 
 - Added `launch-agent --run-yes` for explicitly confirmed scheduled apply mode.

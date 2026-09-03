@@ -55,7 +55,40 @@ The CLI stores only MailMate session cookies in:
 
 It does not open Chrome, does not ask for Chrome developer access, and does not read Chrome cookies/profile stores.
 
+## Multi-Profile Support
+
+The CLI supports multiple independent MailMate accounts via `--profile <name>` (or `MAILMATE_PROFILE=<name>`). The default profile name is `default`.
+
+| Profile | Config File | Env File | Cookies Path |
+|---|---|---|---|
+| `default` | `~/.config/mailmate-cli/config.json` | `~/.config/mailmate-cli/env` | `~/.local/state/mailmate-cli/cookies.txt` |
+| `profile2` | `~/.config/mailmate-cli/profiles/profile2/config.json` | `~/.config/mailmate-cli/profiles/profile2/env` | `~/.local/state/mailmate-cli/profiles/profile2/cookies.txt` |
+
+Initialize and inspect status for a specific profile:
+
+```bash
+./bin/mailmate --profile profile2 init
+./bin/mailmate --profile profile2 doctor
+```
+
 ## Commands
+
+List inbox mail from `https://mailmate.jp/app/mails`:
+
+```bash
+./bin/mailmate list --limit 20
+./bin/mailmate list --status opened
+./bin/mailmate list --sender "茅ヶ崎市" --unread-only
+./bin/mailmate --json list
+```
+
+Read mail details and extract scanned PDF document text:
+
+```bash
+./bin/mailmate read 216635
+./bin/mailmate read 216635 --download-dir ~/Downloads
+./bin/mailmate --json read 216635
+```
 
 Login or refresh the cookie jar:
 
