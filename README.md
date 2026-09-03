@@ -78,6 +78,9 @@ List inbox mail from `https://mailmate.jp/app/mails`:
 ```bash
 ./bin/mailmate list --limit 20
 ./bin/mailmate list --status opened
+./bin/mailmate list --search "神田"
+./bin/mailmate list --filter shredded
+./bin/mailmate list --tag bill
 ./bin/mailmate list --sender "茅ヶ崎市" --unread-only
 ./bin/mailmate --json list
 ```
@@ -88,6 +91,34 @@ Read mail details and extract scanned PDF document text:
 ./bin/mailmate read 216635
 ./bin/mailmate read 216635 --download-dir ~/Downloads
 ./bin/mailmate --json read 216635
+```
+
+Request open and scan for unopened mail (`未開封`):
+
+```bash
+./bin/mailmate open 216221
+./bin/mailmate open 216221 --apply --yes
+```
+
+Download scanned PDF:
+
+```bash
+./bin/mailmate download 216635 --output ~/Downloads/document.pdf
+```
+
+Archive mail to clean up inbox:
+
+```bash
+./bin/mailmate archive 216635
+./bin/mailmate archive 216635 --apply --yes
+```
+
+Mark mail status (bill, receipt, unread):
+
+```bash
+./bin/mailmate mark-bill 216635 --apply --yes
+./bin/mailmate mark-receipt 216635 --apply --yes
+./bin/mailmate mark-unread 216635 --apply --yes
 ```
 
 Login or refresh the cookie jar:

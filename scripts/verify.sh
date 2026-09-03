@@ -122,6 +122,40 @@ if [ "$no_login_read_code" -ne 77 ]; then
 fi
 printf '%s\n' "$no_login_read_output" | grep -q '"auth_required"'
 
+set +e
+open_guard_code=$(python3 -m mailmate_cli --json open 198843 --apply 2>&1 >/dev/null; echo $?)
+archive_guard_code=$(python3 -m mailmate_cli --json archive 198843 --apply 2>&1 >/dev/null; echo $?)
+set -e
+if [ "$open_guard_code" -ne 2 ]; then
+  printf 'Expected open apply guard to exit 2, got %s\n' "$open_guard_code" >&2
+  exit 1
+fi
+if [ "$archive_guard_code" -ne 2 ]; then
+  printf 'Expected archive apply guard to exit 2, got %s\n' "$archive_guard_code" >&2
+  exit 1
+fi
+
+set +e
+no_login_open_output=$(python3 -m mailmate_cli --cookie-jar "$tmp_dir/no-login-cookies.txt" --no-login --json open 198843 2>&1)
+no_login_open_code=$?
+no_login_download_output=$(python3 -m mailmate_cli --cookie-jar "$tmp_dir/no-login-cookies.txt" --no-login --json download 198843 2>&1)
+no_login_download_code=$?
+no_login_archive_output=$(python3 -m mailmate_cli --cookie-jar "$tmp_dir/no-login-cookies.txt" --no-login --json archive 198843 2>&1)
+no_login_archive_code=$?
+set -e
+if [ "$no_login_open_code" -ne 77 ]; then
+  printf 'Expected no-login open smoke to exit 77, got %s\n' "$no_login_open_code" >&2
+  exit 1
+fi
+if [ "$no_login_download_code" -ne 77 ]; then
+  printf 'Expected no-login download smoke to exit 77, got %s\n' "$no_login_download_code" >&2
+  exit 1
+fi
+if [ "$no_login_archive_code" -ne 77 ]; then
+  printf 'Expected no-login archive smoke to exit 77, got %s\n' "$no_login_archive_code" >&2
+  exit 1
+fi
+
 python3 -m mailmate_cli \
   --profile profile2 \
   --json \

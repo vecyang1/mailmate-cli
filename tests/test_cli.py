@@ -327,6 +327,137 @@ class CliTests(unittest.TestCase):
         self.assertIn("profiles/profile2", args.cookie_jar)
         self.assertIn("profiles/profile2", args.env_file)
 
+    def test_cmd_open_dry_run_and_apply(self):
+        from mailmate_cli.cli import cmd_open
+        from mailmate_cli.models import OpenScanAction
+
+        mock_detail = MailDetail(
+            mail_id="216221",
+            sender="全国健康保険協会",
+            status="未開封",
+            received_date="2026年08月10日(月)",
+            scan_missing=True,
+            scan_requested=False,
+            has_digital_copy=False,
+            already_discarded=False,
+            open_scan_action=OpenScanAction(method="POST", url="https://mailmate.jp/app/mails/216221/open_mail"),
+        )
+        dry_args = Namespace(
+            base_url="https://mailmate.jp",
+            cookie_jar="/tmp/mock_cookies.txt",
+            no_login=True,
+            mail_id="216221",
+            apply=False,
+            yes=False,
+            json=True,
+            quiet=False,
+        )
+
+        with patch("mailmate_cli.cli._ensure_auth"), patch("mailmate_cli.cli._client") as mock_c:
+            mock_c.return_value.detail.return_value = mock_detail
+            buf = StringIO()
+            with redirect_stdout(buf):
+                exit_code = cmd_open(dry_args)
+            self.assertEqual(exit_code, 0)
+            data = json.loads(buf.getvalue())
+            self.assertEqual(data["decision"], "dry_run")
+            self.assertEqual(data["reason"], "eligible")
+
+        apply_args = Namespace(
+            base_url="https://mailmate.jp",
+            cookie_jar="/tmp/mock_cookies.txt",
+            no_login=True,
+            mail_id="216221",
+            apply=True,
+            yes=True,
+            json=True,
+            quiet=False,
+        )
+        with patch("mailmate_cli.cli._ensure_auth"), patch("mailmate_cli.cli._client") as mock_c:
+            mock_c.return_value.detail.return_value = mock_detail
+            buf = StringIO()
+            with redirect_stdout(buf):
+                exit_code = cmd_open(apply_args)
+            self.assertEqual(exit_code, 0)
+            data = json.loads(buf.getvalue())
+            self.assertEqual(data["decision"], "requested")
+            mock_c.return_value.request_scan.assert_called_once()
+
+    def test_cmd_download(self):
+        from mailmate_cli.cli import cmd_download
+
+        mock_detail = MailDetail(
+            mail_id="216635",
+            sender="法律事務所",
+            status="開封済み",
+            received_date="2026年08月12日(水)",
+            scan_missing=False,
+            scan_requested=False,
+            has_digital_copy=True,
+            already_discarded=False,
+            pdf_download_url="https://mailmate.jp/app/mails/216635/generate_pdf",
+        )
+        with TemporaryDirectory() as tmp:
+            dest_pdf = Path(tmp) / "downloaded.pdf"
+            args = Namespace(
+                base_url="https://mailmate.jp",
+                cookie_jar="/tmp/mock_cookies.txt",
+                no_login=True,
+                mail_id="216635",
+                output=str(dest_pdf),
+                json=True,
+                quiet=False,
+            )
+            with patch("mailmate_cli.cli._ensure_auth"), patch("mailmate_cli.cli._client") as mock_c:
+                mock_c.return_value.detail.return_value = mock_detail
+                mock_c.return_value.download_pdf_bytes.return_value = b"%PDF-1.4 test bytes"
+                buf = StringIO()
+                with redirect_stdout(buf):
+                    exit_code = cmd_download(args)
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(dest_pdf.exists())
+            self.assertEqual(dest_pdf.read_bytes(), b"%PDF-1.4 test bytes")
+            data = json.loads(buf.getvalue())
+            self.assertEqual(data["sizeBytes"], len(b"%PDF-1.4 test bytes"))
+
+    def test_cmd_archive_and_mark_commands(self):
+        from mailmate_cli.cli import cmd_archive, cmd_mark_bill, cmd_mark_receipt, cmd_mark_unread
+
+        mock_detail = MailDetail(
+            mail_id="216635",
+            sender="法律事務所",
+            status="開封済み",
+            received_date="2026年08月12日(水)",
+            scan_missing=False,
+            scan_requested=False,
+            has_digital_copy=True,
+            already_discarded=False,
+            archive_url="https://mailmate.jp/app/mails/216635/archive_mail",
+        )
+        args = Namespace(
+            base_url="https://mailmate.jp",
+            cookie_jar="/tmp/mock_cookies.txt",
+            no_login=True,
+            mail_id="216635",
+            apply=True,
+            yes=True,
+            json=True,
+            quiet=False,
+        )
+        with patch("mailmate_cli.cli._ensure_auth"), patch("mailmate_cli.cli._client") as mock_c:
+            mock_c.return_value.detail.return_value = mock_detail
+            buf = StringIO()
+            with redirect_stdout(buf):
+                self.assertEqual(cmd_archive(args), 0)
+                self.assertEqual(cmd_mark_bill(args), 0)
+                self.assertEqual(cmd_mark_receipt(args), 0)
+                self.assertEqual(cmd_mark_unread(args), 0)
+            mock_c.return_value.archive_mail.assert_called_once()
+            mock_c.return_value.mark_bill.assert_called_once()
+            mock_c.return_value.mark_receipt.assert_called_once()
+            mock_c.return_value.mark_unread.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

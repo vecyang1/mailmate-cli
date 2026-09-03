@@ -46,7 +46,7 @@ from .runtime import (
     build_status_report,
     scaffold_local_setup,
 )
-from .safety import decide_discard
+from .safety import decide_discard, decide_open_scan
 
 
 def require_apply_confirmation(*, apply: bool, yes: bool) -> None:
@@ -55,6 +55,7 @@ def require_apply_confirmation(*, apply: bool, yes: bool) -> None:
 
 
 def format_decision_row(detail: MailDetail, decision: DiscardDecision, *, applied: bool) -> dict[str, object]:
+    open_scan_dec = decide_open_scan(detail)
     return {
         "mailId": detail.mail_id,
         "sender": detail.sender,
@@ -68,6 +69,9 @@ def format_decision_row(detail: MailDetail, decision: DiscardDecision, *, applie
         "message": decision.message,
         "actionMethod": decision.action.method if decision.action else None,
         "actionUrl": decision.action.url if decision.action else None,
+        "openScanEligible": open_scan_dec.eligible,
+        "openScanReason": open_scan_dec.reason,
+        "archiveAvailable": bool(detail.archive_url),
     }
 
 
@@ -95,6 +99,9 @@ def build_parser() -> argparse.ArgumentParser:
     list_cmd.add_argument("--inbox-id", default=None, help="Optional inbox ID filter.")
     list_cmd.add_argument("--limit", type=int, default=30, help="Maximum number of items to return.")
     list_cmd.add_argument("--sender", default=None, help="Filter by sender name substring.")
+    list_cmd.add_argument("--search", default=None, help="Server-side search query across sender/notes/mail.")
+    list_cmd.add_argument("--filter", dest="filter_name", default=None, help="Filter by folder/status (e.g. archived, shredded).")
+    list_cmd.add_argument("--tag", default=None, help="Filter by tag (e.g. bill).")
     list_cmd.add_argument("--status", default=None, help="Filter by status (opened, unopened, mailroom, etc.).")
     list_cmd.add_argument("--unread-only", action="store_true", help="Only show unread mail.")
     list_cmd.set_defaults(func=cmd_list)
@@ -105,6 +112,41 @@ def build_parser() -> argparse.ArgumentParser:
     read_cmd.add_argument("--no-text", dest="text", action="store_false", help="Do not extract PDF text.")
     read_cmd.add_argument("--download-dir", default=None, help="Directory to save downloaded scanned PDF.")
     read_cmd.set_defaults(func=cmd_read)
+
+    open_cmd = sub.add_parser("open", aliases=["request-scan"], help="Request MailMate staff to open and scan an unopened mail.")
+    open_cmd.add_argument("mail_id", help="MailMate mail ID to open/scan.")
+    open_cmd.add_argument("--apply", action="store_true", help="Actually submit the open scan request.")
+    open_cmd.add_argument("--yes", action="store_true", help="Required with --apply.")
+    open_cmd.set_defaults(func=cmd_open)
+
+    download_cmd = sub.add_parser("download", help="Download the scanned PDF for a mail item.")
+    download_cmd.add_argument("mail_id", help="MailMate mail ID.")
+    download_cmd.add_argument("--output", "-o", default=None, help="Destination file path for PDF.")
+    download_cmd.set_defaults(func=cmd_download)
+
+    archive_cmd = sub.add_parser("archive", help="Archive a mail item in MailMate.")
+    archive_cmd.add_argument("mail_id", help="MailMate mail ID to archive.")
+    archive_cmd.add_argument("--apply", action="store_true", help="Actually submit the archive action.")
+    archive_cmd.add_argument("--yes", action="store_true", help="Required with --apply.")
+    archive_cmd.set_defaults(func=cmd_archive)
+
+    unread_cmd = sub.add_parser("mark-unread", help="Mark a mail item as unread.")
+    unread_cmd.add_argument("mail_id", help="MailMate mail ID.")
+    unread_cmd.add_argument("--apply", action="store_true", help="Actually submit the mark unread action.")
+    unread_cmd.add_argument("--yes", action="store_true", help="Required with --apply.")
+    unread_cmd.set_defaults(func=cmd_mark_unread)
+
+    bill_cmd = sub.add_parser("mark-bill", help="Mark a mail item as bill (請求書).")
+    bill_cmd.add_argument("mail_id", help="MailMate mail ID.")
+    bill_cmd.add_argument("--apply", action="store_true", help="Actually submit the mark bill action.")
+    bill_cmd.add_argument("--yes", action="store_true", help="Required with --apply.")
+    bill_cmd.set_defaults(func=cmd_mark_bill)
+
+    receipt_cmd = sub.add_parser("mark-receipt", help="Mark a mail item as receipt (領収書).")
+    receipt_cmd.add_argument("mail_id", help="MailMate mail ID.")
+    receipt_cmd.add_argument("--apply", action="store_true", help="Actually submit the mark receipt action.")
+    receipt_cmd.add_argument("--yes", action="store_true", help="Required with --apply.")
+    receipt_cmd.set_defaults(func=cmd_mark_receipt)
 
     init = sub.add_parser("init", help="Create safe local config scaffolding without credentials.")
     init.add_argument("--config", default=str(DEFAULT_CONFIG_FILE))
@@ -198,7 +240,13 @@ def main(argv: list[str] | None = None) -> int:
 def cmd_list(args: argparse.Namespace) -> int:
     client = _client(args)
     _ensure_auth(args, client)
-    items = client.inbox(getattr(args, "inbox_id", None), limit=args.limit)
+    items = client.inbox(
+        getattr(args, "inbox_id", None),
+        limit=args.limit,
+        search=getattr(args, "search", None),
+        filter_name=getattr(args, "filter_name", None),
+        tag=getattr(args, "tag", None),
+    )
     if getattr(args, "sender", None):
         items = [it for it in items if args.sender.lower() in it.sender.lower()]
     if getattr(args, "unread_only", False):
@@ -209,8 +257,8 @@ def cmd_list(args: argparse.Namespace) -> int:
             items = [it for it in items if it.status == "開封済み"]
         elif s in {"unopened", "未開封"}:
             items = [it for it in items if it.status == "未開封"]
-        elif s in {"opening", "pending", "開封待ち", "開封待ち/依頼中"}:
-            items = [it for it in items if it.status == "開封待ち/依頼中" or it.scan_requested]
+        elif s in {"opening", "pending", "開封待ち", "開封待ち/依頼中", "依頼中"}:
+            items = [it for it in items if it.status in {"開封待ち", "開封待ち/依頼中", "依頼中"} or it.scan_requested]
         elif s in {"mailroom", "メール室"}:
             items = [it for it in items if it.status == "メール室"]
         else:
@@ -276,6 +324,140 @@ def cmd_read(args: argparse.Namespace) -> int:
     }
     human = _human_read(row)
     _emit(args, row, human)
+    return 0
+
+
+def cmd_open(args: argparse.Namespace) -> int:
+    require_apply_confirmation(apply=args.apply, yes=args.yes)
+    client = _client(args)
+    _ensure_auth(args, client)
+    detail = client.detail(args.mail_id)
+    decision = decide_open_scan(detail)
+    applied = False
+    if args.apply and decision.eligible:
+        client.request_scan(args.mail_id, f"{args.base_url.rstrip('/')}/app/mails/{detail.mail_id}/view_mail")
+        applied = True
+    row = {
+        "mailId": detail.mail_id,
+        "sender": detail.sender,
+        "receivedDate": detail.received_date,
+        "status": "開封待ち/依頼中" if applied else detail.status,
+        "decision": "requested" if applied else ("dry_run" if decision.eligible else "skipped"),
+        "reason": decision.reason,
+        "message": "Open and scan requested." if applied else decision.message,
+        "actionUrl": decision.action.url if decision.action else None,
+    }
+    human = (
+        f"{row['decision']}: mail #{row['mailId']} {row.get('sender') or ''} "
+        f"status={row.get('status') or '?'} reason={row['reason']}"
+    )
+    _emit(args, row, human)
+    return 0 if decision.eligible or not args.apply else 66
+
+
+def cmd_download(args: argparse.Namespace) -> int:
+    client = _client(args)
+    _ensure_auth(args, client)
+    detail = client.detail(args.mail_id)
+    target_url = detail.pdf_download_url or (detail.pdf_urls[0] if detail.pdf_urls else None)
+    if not target_url:
+        _emit_error(args, "no_pdf_available", f"Mail #{detail.mail_id} has no scanned PDF copy.")
+        return 1
+    pdf_bytes = client.download_pdf_bytes(
+        target_url, referer=f"{args.base_url.rstrip('/')}/app/mails/{detail.mail_id}/view_mail"
+    )
+    if getattr(args, "output", None):
+        output_path = Path(args.output).expanduser()
+    else:
+        output_path = Path.cwd() / "downloads" / f"mail_{detail.mail_id}.pdf"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(pdf_bytes)
+    result = {
+        "mailId": detail.mail_id,
+        "sender": detail.sender,
+        "path": str(output_path.resolve()),
+        "sizeBytes": len(pdf_bytes),
+    }
+    human = f"Downloaded PDF for mail #{detail.mail_id} to {result['path']} ({result['sizeBytes']} bytes)"
+    _emit(args, result, human)
+    return 0
+
+
+def cmd_archive(args: argparse.Namespace) -> int:
+    require_apply_confirmation(apply=args.apply, yes=args.yes)
+    client = _client(args)
+    _ensure_auth(args, client)
+    detail = client.detail(args.mail_id)
+    applied = False
+    if args.apply:
+        client.archive_mail(args.mail_id, f"{args.base_url.rstrip('/')}/app/mails/{detail.mail_id}/view_mail")
+        applied = True
+    result = {
+        "mailId": detail.mail_id,
+        "sender": detail.sender,
+        "status": detail.status,
+        "decision": "archived" if applied else "dry_run",
+        "actionUrl": detail.archive_url,
+    }
+    human = f"{result['decision']}: archive mail #{detail.mail_id} ({detail.sender or ''})"
+    _emit(args, result, human)
+    return 0
+
+
+def cmd_mark_unread(args: argparse.Namespace) -> int:
+    require_apply_confirmation(apply=args.apply, yes=args.yes)
+    client = _client(args)
+    _ensure_auth(args, client)
+    detail = client.detail(args.mail_id)
+    applied = False
+    if args.apply:
+        client.mark_unread(args.mail_id, f"{args.base_url.rstrip('/')}/app/mails/{detail.mail_id}/view_mail")
+        applied = True
+    result = {
+        "mailId": detail.mail_id,
+        "sender": detail.sender,
+        "decision": "marked_unread" if applied else "dry_run",
+    }
+    human = f"{result['decision']}: mail #{detail.mail_id} unread"
+    _emit(args, result, human)
+    return 0
+
+
+def cmd_mark_bill(args: argparse.Namespace) -> int:
+    require_apply_confirmation(apply=args.apply, yes=args.yes)
+    client = _client(args)
+    _ensure_auth(args, client)
+    detail = client.detail(args.mail_id)
+    applied = False
+    if args.apply:
+        client.mark_bill(args.mail_id, f"{args.base_url.rstrip('/')}/app/mails/{detail.mail_id}/view_mail")
+        applied = True
+    result = {
+        "mailId": detail.mail_id,
+        "sender": detail.sender,
+        "decision": "marked_bill" if applied else "dry_run",
+    }
+    human = f"{result['decision']}: mail #{detail.mail_id} bill"
+    _emit(args, result, human)
+    return 0
+
+
+def cmd_mark_receipt(args: argparse.Namespace) -> int:
+    require_apply_confirmation(apply=args.apply, yes=args.yes)
+    client = _client(args)
+    _ensure_auth(args, client)
+    detail = client.detail(args.mail_id)
+    applied = False
+    if args.apply:
+        client.mark_receipt(args.mail_id, f"{args.base_url.rstrip('/')}/app/mails/{detail.mail_id}/view_mail")
+        applied = True
+    result = {
+        "mailId": detail.mail_id,
+        "sender": detail.sender,
+        "decision": "marked_receipt" if applied else "dry_run",
+    }
+    human = f"{result['decision']}: mail #{detail.mail_id} receipt"
+    _emit(args, result, human)
     return 0
 
 

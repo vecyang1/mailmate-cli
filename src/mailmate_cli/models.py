@@ -13,6 +13,14 @@ class DiscardAction:
 
 
 @dataclass(frozen=True)
+class OpenScanAction:
+    method: str
+    url: str
+    fields: dict[str, str] = field(default_factory=dict)
+    label: str = "開封スキャン"
+
+
+@dataclass(frozen=True)
 class InboxItem:
     mail_id: str
     sender: str
@@ -39,6 +47,8 @@ class MailDetail:
     pdf_download_url: str | None = None
     location: str | None = None
     notes: str | None = None
+    open_scan_action: OpenScanAction | None = None
+    archive_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -46,4 +56,12 @@ class DiscardDecision:
     eligible: bool
     reason: str
     action: DiscardAction | None = None
+    message: str = ""
+
+
+@dataclass(frozen=True)
+class OpenScanDecision:
+    eligible: bool
+    reason: str
+    action: OpenScanAction | None = None
     message: str = ""
