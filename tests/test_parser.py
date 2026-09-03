@@ -1,0 +1,207 @@
+import unittest
+
+from mailmate_cli.parser import discover_discard_actions, parse_mail_detail, parse_inbox
+
+
+UNOPENED_DETAIL = """
+<html><body>
+  <h1>株式会社Casa</h1>
+  <div class="alert">郵便物がまだ開封スキャンされていません。</div>
+  <button>開封スキャン</button>
+  <img src="/rails/active_storage/blobs/cover-only.jpg" alt="郵便物の表面">
+  <dl>
+    <dt>受領日</dt><dd>2026年06月01日(月)</dd>
+    <dt>ステータス</dt><dd>未開封</dd>
+    <dt>郵便物 #</dt><dd>#199671</dd>
+  </dl>
+  <a title="破棄" href="/app/mails/199671/discard" data-method="post">破棄</a>
+</body></html>
+"""
+
+
+SCANNED_DETAIL_WITH_FORM = """
+<html><head>
+  <meta name="csrf-token" content="meta-csrf-token">
+</head><body>
+  <h1>全国健康保険協会 東京支部</h1>
+  <dl>
+    <dt>受領日</dt><dd>2026年05月28日(木)</dd>
+    <dt>ステータス</dt><dd>開封済み</dd>
+    <dt>郵便物 #</dt><dd>#198843</dd>
+  </dl>
+  <a href="/rails/active_storage/blobs/letter.pdf">PDF</a>
+  <form action="/app/mails/198843/discard" method="post">
+    <input type="hidden" name="authenticity_token" value="form-token">
+    <input type="hidden" name="_method" value="patch">
+    <button title="破棄">原本を破棄</button>
+  </form>
+</body></html>
+"""
+
+
+INBOX_HTML = """
+<html><body>
+  <div class="mail-inbox__main__list">
+    <a class="mail-row is-scan-requested" href="/app/mails/198843/view_mail">
+      <span class="dot dot-danger"></span>
+      <span>全国健康保険協会東京支部</span>
+      <time>2026年05月28日(木)</time>
+    </a>
+    <a class="mail-row" href="/app/mails/199671/view_mail">
+      <span class="dot dot-secondary"></span>
+      <span>株式会社Casa</span>
+      <time>2026年06月01日(月)</time>
+    </a>
+  </div>
+</body></html>
+"""
+
+
+class ParserTests(unittest.TestCase):
+    def test_parse_unopened_detail_detects_scan_missing(self):
+        detail = parse_mail_detail(UNOPENED_DETAIL, "https://mailmate.jp/app/mails/199671/view_mail")
+
+        self.assertEqual(detail.mail_id, "199671")
+        self.assertEqual(detail.sender, "株式会社Casa")
+        self.assertEqual(detail.status, "未開封")
+        self.assertTrue(detail.scan_missing)
+        self.assertFalse(detail.has_digital_copy)
+
+    def test_discover_discard_form_prefers_form_method_override(self):
+        actions = discover_discard_actions(
+            SCANNED_DETAIL_WITH_FORM,
+            "https://mailmate.jp/app/mails/198843/view_mail",
+        )
+
+        self.assertEqual(len(actions), 1)
+        self.assertEqual(actions[0].method, "PATCH")
+        self.assertEqual(actions[0].url, "https://mailmate.jp/app/mails/198843/discard")
+        self.assertEqual(actions[0].fields["authenticity_token"], "form-token")
+
+    def test_parse_scanned_detail_has_digital_copy(self):
+        detail = parse_mail_detail(
+            SCANNED_DETAIL_WITH_FORM,
+            "https://mailmate.jp/app/mails/198843/view_mail",
+        )
+
+        self.assertEqual(detail.status, "開封済み")
+        self.assertFalse(detail.scan_missing)
+        self.assertTrue(detail.has_digital_copy)
+        self.assertEqual(detail.discard_actions[0].method, "PATCH")
+
+    def test_parse_inbox_marks_red_dot_as_scan_requested_not_opened(self):
+        items = parse_inbox(INBOX_HTML, "https://mailmate.jp/app/mails?inbox_id=82433")
+
+        self.assertEqual([item.mail_id for item in items], ["198843", "199671"])
+        self.assertTrue(items[0].scan_requested)
+        self.assertFalse(items[1].scan_requested)
+        self.assertEqual(items[0].sender, "全国健康保険協会東京支部")
+
+    def test_cover_image_alone_is_not_a_verified_inside_scan(self):
+        detail = parse_mail_detail(
+            """
+            <html><body>
+              <h1>茅ヶ崎市より</h1>
+              <img src="/rails/active_storage/blobs/cover.jpg" alt="郵便物の表面">
+              <dl>
+                <dt>受領日</dt><dd>2026年06月15日(月)</dd>
+                <dt>ステータス</dt><dd>保管中</dd>
+                <dt>郵便物 #</dt><dd>#200001</dd>
+              </dl>
+              <a title="破棄" href="/app/mails/200001/discard" data-method="post">破棄</a>
+            </body></html>
+            """,
+            "https://mailmate.jp/app/mails/200001/view_mail",
+        )
+
+        self.assertFalse(detail.scan_missing)
+        self.assertFalse(detail.has_digital_copy)
+
+    def test_parser_ignores_script_and_style_tags(self):
+        html = """
+        <html>
+          <head>
+            <style>.danger { color: red; }</style>
+            <script>function evil() { return "doNotLeak"; }</script>
+          </head>
+          <body>
+            <h1>Real Title</h1>
+            <p>Real text</p>
+            <script>console.log("more scripts");</script>
+          </body>
+        </html>
+        """
+        detail = parse_mail_detail(html, "https://mailmate.jp/app/mails/123/view_mail")
+        self.assertEqual(detail.sender, "Real Title")
+        # Ensure script/style text is not present anywhere in headings or sender
+        self.assertNotIn("evil", detail.sender or "")
+        self.assertNotIn("danger", detail.sender or "")
+
+    def test_parse_inbox_extracts_status_and_read_state(self):
+        html = """
+        <html><body>
+          <a href="/app/mails/210888/view_mail">
+            <div class="mail-inbox__main__list__item mail-inbox__main__list__item--opened mail-inbox__main__list__item--bill mail-inbox__main__list__item--read">
+              <span class="mail-inbox__main__list__item__notes">茅ヶ崎市</span>
+              <span class="mail-inbox__main__list__item__received-on">2026年08月01日(土)</span>
+              <div class="mail-inbox__main__list__item__marks">
+                <div tooltip-title="開封済み"></div>
+              </div>
+            </div>
+          </a>
+          <a href="/app/mails/210080/view_mail">
+            <div class="mail-inbox__main__list__item mail-inbox__main__list__item--unopened mail-inbox__main__list__item--unread">
+              <span class="mail-inbox__main__list__item__notes">法律事務所</span>
+              <span class="mail-inbox__main__list__item__received-on">2026年07月28日(火)</span>
+            </div>
+          </a>
+          <a href="/app/mails/220249/view_mail">
+            <div class="mail-inbox__main__list__item mail-inbox__main__list__item--opening mail-inbox__main__list__item--read">
+              <span class="mail-inbox__main__list__item__notes">茅ヶ崎市</span>
+              <div tooltip-title="開封スキャン依頼"></div>
+            </div>
+          </a>
+        </body></html>
+        """
+        items = parse_inbox(html, "https://mailmate.jp/app/mails")
+        self.assertEqual(len(items), 3)
+
+        self.assertEqual(items[0].mail_id, "210888")
+        self.assertEqual(items[0].sender, "茅ヶ崎市")
+        self.assertEqual(items[0].status, "開封済み")
+        self.assertTrue(items[0].is_read)
+        self.assertTrue(items[0].is_bill)
+        self.assertFalse(items[0].scan_requested)
+
+        self.assertEqual(items[1].mail_id, "210080")
+        self.assertEqual(items[1].status, "未開封")
+        self.assertFalse(items[1].is_read)
+        self.assertFalse(items[1].is_bill)
+
+        self.assertEqual(items[2].mail_id, "220249")
+        self.assertTrue(items[2].scan_requested)
+        self.assertEqual(items[2].status, "開封待ち/依頼中")
+
+
+    def test_parse_mail_detail_extracts_pdf_urls(self):
+        html = """
+        <html><body>
+          <h1>テスト郵便物</h1>
+          <dl>
+            <dt>ステータス</dt><dd>開封済み</dd>
+            <dt>場所</dt><dd>メール室</dd>
+            <dt>メモ</dt><dd>重要書類です</dd>
+          </dl>
+          <a href="/rails/active_storage/representations/redirect/xxx/page1.pdf"
+             data-title="page1.pdf <a href='/rails/active_storage/blobs/redirect/xxx/page1.pdf'>Download</a> <a href='/app/mails/198843/generate_pdf'>Download All</a>"></a>
+        </body></html>
+        """
+        detail = parse_mail_detail(html, "https://mailmate.jp/app/mails/198843/view_mail")
+        self.assertEqual(detail.status, "開封済み")
+        self.assertEqual(detail.location, "メール室")
+        self.assertIn("重要書類です", detail.notes or "")
+        self.assertTrue(any("generate_pdf" in u for u in [detail.pdf_download_url or ""] + detail.pdf_urls))
+
+
+if __name__ == "__main__":
+    unittest.main()
