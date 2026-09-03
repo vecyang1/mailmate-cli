@@ -1,6 +1,16 @@
 # Changelog
 
-## 0.7.0 - 2026-09-03
+## 0.8.0 - 2026-09-03
+
+- Added `open` (alias `request-scan`) command to request MailMate staff to open and scan unopened mail (`未開封`) with dry-run safety and `--apply --yes` guard.
+- Added `download` command to download scanned PDFs directly with output destination controls and size reporting.
+- Added `archive` command to archive processed mail items (`/app/mails/{id}/archive_mail`).
+- Added `mark-unread`, `mark-bill`, and `mark-receipt` commands for fast postal mail triage.
+- Enhanced `list` with server-side query options: `--search <query>`, `--filter <archived|shredded>`, and `--tag <tag>`.
+- Fixed discard action discovery on detail pages: recognized `/app/mails/{id}/shred_form` modals and mapped them to `PATCH .../shred` actions with CSRF tokens.
+- Fixed non-ASCII URL encoding bug in `client.request` preventing `UnicodeEncodeError` on Japanese search queries.
+- Added automatic detection of `開封待ち` (scan requested / pending) on mail detail pages.
+- Expanded test suite to 55 unit tests and added no-login/apply-guard smokes in `scripts/verify.sh`.
 
 - Added `list` command to read and filter postal mail items directly from `https://mailmate.jp/app/mails` (`--limit`, `--sender`, `--status`, `--unread-only`, `--json`).
 - Added `read` command to inspect mail metadata, download scanned PDFs, and extract document text/OCR directly in the terminal (`--text`, `--download-dir`, `--json`).

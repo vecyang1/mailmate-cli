@@ -202,6 +202,55 @@ class ParserTests(unittest.TestCase):
         self.assertIn("重要書類です", detail.notes or "")
         self.assertTrue(any("generate_pdf" in u for u in [detail.pdf_download_url or ""] + detail.pdf_urls))
 
+    def test_discover_discard_from_shred_form(self):
+        html = """
+        <html><head><meta name="csrf-token" content="tok123"></head><body>
+          <form action="/app/mails/216635/shred_form" method="get">
+            <button>破棄</button>
+          </form>
+        </body></html>
+        """
+        actions = discover_discard_actions(html, "https://mailmate.jp/app/mails/216635/view_mail")
+        self.assertEqual(len(actions), 1)
+        self.assertEqual(actions[0].method, "PATCH")
+        self.assertEqual(actions[0].url, "https://mailmate.jp/app/mails/216635/shred")
+        self.assertEqual(actions[0].fields.get("authenticity_token"), "tok123")
+
+    def test_parse_mail_detail_discovers_open_scan_and_archive(self):
+        html = """
+        <html><head><meta name="csrf-token" content="csrf_xyz"></head><body>
+          <h1>未開封テスト</h1>
+          <dl><dt>ステータス</dt><dd>未開封</dd></dl>
+          <form action="/app/mails/216221/open_mail" method="post">
+            <input type="hidden" name="_method" value="patch">
+            <button type="submit">開封スキャン</button>
+          </form>
+          <form action="/app/mails/216221/archive_mail" method="post">
+            <input type="hidden" name="_method" value="patch">
+          </form>
+        </body></html>
+        """
+        detail = parse_mail_detail(html, "https://mailmate.jp/app/mails/216221/view_mail")
+        self.assertEqual(detail.status, "未開封")
+        self.assertIsNotNone(detail.open_scan_action)
+        self.assertEqual(detail.open_scan_action.url, "https://mailmate.jp/app/mails/216221/open_mail")
+        self.assertEqual(detail.open_scan_action.fields.get("_method"), "patch")
+        self.assertEqual(detail.open_scan_action.fields.get("authenticity_token"), "csrf_xyz")
+        self.assertEqual(detail.archive_url, "https://mailmate.jp/app/mails/216221/archive_mail")
+
+    def test_parse_mail_detail_detects_scan_pending_from_text(self):
+        html = """
+        <html><body>
+          <h1>茅ヶ崎市</h1>
+          <div>開封スキャン依頼を完了しました。近日中に更新します。</div>
+          <dl><dt>ステータス</dt><dd>開封待ち</dd></dl>
+        </body></html>
+        """
+        detail = parse_mail_detail(html, "https://mailmate.jp/app/mails/220249/view_mail")
+        self.assertEqual(detail.status, "開封待ち")
+        self.assertTrue(detail.scan_requested)
+        self.assertTrue(detail.scan_missing)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -10,7 +10,7 @@ from http.cookiejar import MozillaCookieJar
 from pathlib import Path
 from typing import Callable
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urljoin
+from urllib.parse import quote, urlencode, urljoin, urlsplit, urlunsplit
 from urllib.request import HTTPCookieProcessor, HTTPSHandler, Request, build_opener
 
 from . import __version__
@@ -67,6 +67,10 @@ class MailMateClient:
         accept: str = "text/html,application/xhtml+xml",
     ) -> tuple[str, str]:
         url = path_or_url if path_or_url.startswith("http") else urljoin(self.base_url + "/", path_or_url.lstrip("/"))
+        split = urlsplit(url)
+        safe_path = quote(split.path, safe="/%")
+        safe_query = quote(split.query, safe="=&+:%~")
+        url = urlunsplit((split.scheme, split.netloc, safe_path, safe_query, split.fragment))
         body = None
         headers = {
             "User-Agent": f"mailmate-cli/{__version__} (+local automation)",
@@ -120,8 +124,26 @@ class MailMateClient:
             raise AuthRequiredError("MailMate login failed or requires additional verification.")
         self.save_cookies()
 
-    def inbox(self, inbox_id: str | None = None, limit: int = 50) -> list[InboxItem]:
-        path = f"/app/mails?inbox_id={inbox_id}" if inbox_id else "/app/mails"
+    def inbox(
+        self,
+        inbox_id: str | None = None,
+        limit: int = 50,
+        *,
+        search: str | None = None,
+        filter_name: str | None = None,
+        tag: str | None = None,
+    ) -> list[InboxItem]:
+        params: dict[str, str] = {}
+        if inbox_id:
+            params["inbox_id"] = str(inbox_id)
+        if search:
+            params["search"] = str(search)
+        if filter_name:
+            params["filter"] = str(filter_name)
+        if tag:
+            params["tag"] = str(tag)
+        qs = urlencode(params)
+        path = f"/app/mails?{qs}" if qs else "/app/mails"
         html, final_url = self.request(path)
         if _is_sign_in_page(html, final_url):
             raise AuthRequiredError("MailMate login required.")
@@ -163,6 +185,76 @@ class MailMateClient:
             fields["_method"] = method.lower()
             method = "POST"
         html, final_url = self.request(action.url, method=method, fields=fields, referer=referer)
+        self.save_cookies()
+        return html, final_url
+
+    def request_scan(self, mail_id: str, referer: str | None = None) -> tuple[str, str]:
+        detail = self.detail(mail_id)
+        action_url = f"{self.base_url}/app/mails/{mail_id}/open_mail"
+        fields: dict[str, str] = {"_method": "patch"}
+        ref = referer or f"{self.base_url}/app/mails/{mail_id}/view_mail"
+        if detail.open_scan_action and "authenticity_token" in detail.open_scan_action.fields:
+            fields["authenticity_token"] = detail.open_scan_action.fields["authenticity_token"]
+            action_url = detail.open_scan_action.url
+        elif detail.open_scan_action:
+            action_url = detail.open_scan_action.url
+        html, final_url = self.request(action_url, method="POST", fields=fields, referer=ref)
+        self.save_cookies()
+        return html, final_url
+
+    def archive_mail(self, mail_id: str, referer: str | None = None) -> tuple[str, str]:
+        ref = referer or f"{self.base_url}/app/mails/{mail_id}/view_mail"
+        html_view, _ = self.request(f"/app/mails/{mail_id}/view_mail")
+        from .parser import _extract_meta_csrf
+
+        csrf = _extract_meta_csrf(html_view)
+        fields: dict[str, str] = {"_method": "patch"}
+        if csrf:
+            fields["authenticity_token"] = csrf
+        action_url = f"{self.base_url}/app/mails/{mail_id}/archive_mail"
+        html, final_url = self.request(action_url, method="POST", fields=fields, referer=ref)
+        self.save_cookies()
+        return html, final_url
+
+    def mark_unread(self, mail_id: str, referer: str | None = None) -> tuple[str, str]:
+        ref = referer or f"{self.base_url}/app/mails/{mail_id}/view_mail"
+        html_view, _ = self.request(f"/app/mails/{mail_id}/view_mail")
+        from .parser import _extract_meta_csrf
+
+        csrf = _extract_meta_csrf(html_view)
+        fields: dict[str, str] = {"_method": "patch"}
+        if csrf:
+            fields["authenticity_token"] = csrf
+        action_url = f"{self.base_url}/app/mails/{mail_id}/mark_as_unread"
+        html, final_url = self.request(action_url, method="POST", fields=fields, referer=ref)
+        self.save_cookies()
+        return html, final_url
+
+    def mark_bill(self, mail_id: str, referer: str | None = None) -> tuple[str, str]:
+        ref = referer or f"{self.base_url}/app/mails/{mail_id}/view_mail"
+        html_view, _ = self.request(f"/app/mails/{mail_id}/view_mail")
+        from .parser import _extract_meta_csrf
+
+        csrf = _extract_meta_csrf(html_view)
+        fields: dict[str, str] = {}
+        if csrf:
+            fields["authenticity_token"] = csrf
+        action_url = f"{self.base_url}/app/mails/{mail_id}/mark_as_bill"
+        html, final_url = self.request(action_url, method="POST", fields=fields, referer=ref)
+        self.save_cookies()
+        return html, final_url
+
+    def mark_receipt(self, mail_id: str, referer: str | None = None) -> tuple[str, str]:
+        ref = referer or f"{self.base_url}/app/mails/{mail_id}/view_mail"
+        html_view, _ = self.request(f"/app/mails/{mail_id}/view_mail")
+        from .parser import _extract_meta_csrf
+
+        csrf = _extract_meta_csrf(html_view)
+        fields: dict[str, str] = {}
+        if csrf:
+            fields["authenticity_token"] = csrf
+        action_url = f"{self.base_url}/app/mails/{mail_id}/mark_as_receipt"
+        html, final_url = self.request(action_url, method="POST", fields=fields, referer=ref)
         self.save_cookies()
         return html, final_url
 

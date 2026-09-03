@@ -5,14 +5,16 @@ from html import unescape
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
 
-from .models import DiscardAction, InboxItem, MailDetail
+from .models import DiscardAction, InboxItem, MailDetail, OpenScanAction
 
 
-DISCARD_TERMS = ("破棄", "廃棄", "discard", "dispose", "abandon")
+DISCARD_TERMS = ("破棄", "廃棄", "discard", "dispose", "abandon", "shred")
 SCAN_PENDING_TERMS = (
     "郵便物がまだ開封スキャンされていません",
     "開封スキャン",
     "scan has not been completed",
+    "開封待ち",
+    "開封スキャン依頼",
 )
 DISCARDED_TERMS = ("破棄済み", "廃棄済み", "discarded", "disposed")
 SCANNED_TERMS = ("開封済み", "スキャン済み", "opened", "scanned")
@@ -145,6 +147,7 @@ def parse_html(html: str) -> _MailMateHTMLParser:
 def discover_discard_actions(html: str, page_url: str) -> list[DiscardAction]:
     parser = parse_html(html)
     actions: list[DiscardAction] = []
+    csrf = _extract_meta_csrf(html)
 
     for form in parser.forms:
         action = str(form.get("action") or "")
@@ -159,6 +162,19 @@ def discover_discard_actions(html: str, page_url: str) -> list[DiscardAction]:
                 " ".join(str(v) for v in attrs.values()) if isinstance(attrs, dict) else "",
             ]
         ).lower()
+        if "shred_form" in action:
+            shred_url = urljoin(page_url, re.sub(r"/shred_form$", "/shred", action))
+            f_data = {"authenticity_token": csrf} if csrf else {}
+            actions.append(
+                DiscardAction(
+                    method="PATCH",
+                    url=shred_url,
+                    fields=f_data,
+                    label="破棄",
+                    needs_confirm=True,
+                )
+            )
+            continue
         if not _contains_any(haystack, DISCARD_TERMS):
             continue
         method = str(form.get("method") or "get").upper()
@@ -181,6 +197,19 @@ def discover_discard_actions(html: str, page_url: str) -> list[DiscardAction]:
             continue
         href = attrs.get("href", "")
         haystack = " ".join([href, str(link.get("text") or ""), " ".join(attrs.values())]).lower()
+        if "shred_form" in href:
+            shred_url = urljoin(page_url, re.sub(r"/shred_form$", "/shred", href))
+            f_data = {"authenticity_token": csrf} if csrf else {}
+            actions.append(
+                DiscardAction(
+                    method="PATCH",
+                    url=shred_url,
+                    fields=f_data,
+                    label="破棄",
+                    needs_confirm=True,
+                )
+            )
+            continue
         if not href or not _contains_any(haystack, DISCARD_TERMS):
             continue
         method = (
@@ -190,7 +219,6 @@ def discover_discard_actions(html: str, page_url: str) -> list[DiscardAction]:
             or "GET"
         ).upper()
         fields = {}
-        csrf = _extract_meta_csrf(html)
         if csrf and method != "GET":
             fields["authenticity_token"] = csrf
         actions.append(
@@ -215,12 +243,58 @@ def parse_mail_detail(html: str, page_url: str, scan_requested: bool = False) ->
     received_date = _match_first(text, r"(\d{4}年\d{1,2}月\d{1,2}日(?:\([^)]+\))?)")
     location = _match_first(text, r"場所\s*([^\s#]+)")
     notes = _match_first(text, r"メモ\s*(?:メモを編集\s*)?([^\s].*?)(?:郵便物情報|受領日|ステータス|$)")
-    scan_missing = _contains_any(text, SCAN_PENDING_TERMS) or status == "未開封"
+    scan_missing = _contains_any(text, SCAN_PENDING_TERMS) or status in {"未開封", "開封待ち", "開封待ち/依頼中"}
     already_discarded = _contains_any(text, DISCARDED_TERMS) or bool(status and "破棄" in status)
     scanned_status = bool(status and _contains_any(status, SCANNED_TERMS))
     scanned_page = _contains_any(text, SCANNED_TERMS) and not scan_missing and not already_discarded
     has_digital_copy = scanned_status or scanned_page
     actions = discover_discard_actions(html, page_url)
+
+    # Detect scan requested from page text or status
+    scan_requested = (
+        scan_requested
+        or bool(status and ("開封待ち" in status or "依頼中" in status))
+        or "開封スキャン依頼" in text
+        or "開封待ち" in text
+    )
+
+    # Discover open scan action
+    open_scan_action: OpenScanAction | None = None
+    csrf = _extract_meta_csrf(html)
+    for form in parser.forms:
+        action = str(form.get("action") or "")
+        if "open_mail" in action:
+            form_csrf = form.get("fields", {}).get("authenticity_token") or csrf
+            fields = {"_method": "patch"}
+            if form_csrf:
+                fields["authenticity_token"] = form_csrf
+            open_scan_action = OpenScanAction(
+                method="POST",
+                url=urljoin(page_url, action),
+                fields=fields,
+                label="開封スキャン",
+            )
+            break
+    if not open_scan_action and mail_id and (status == "未開封" or "開封スキャン" in text):
+        fields = {"_method": "patch"}
+        if csrf:
+            fields["authenticity_token"] = csrf
+        open_scan_action = OpenScanAction(
+            method="POST",
+            url=urljoin(page_url, f"/app/mails/{mail_id}/open_mail"),
+            fields=fields,
+            label="開封スキャン",
+        )
+
+    # Discover archive url
+    archive_url: str | None = None
+    for form in parser.forms:
+        action = str(form.get("action") or "")
+        if "archive_mail" in action:
+            archive_url = urljoin(page_url, action)
+            break
+    if not archive_url and mail_id:
+        archive_url = urljoin(page_url, f"/app/mails/{mail_id}/archive_mail")
 
     pdf_urls: list[str] = []
     pdf_download_url: str | None = None
@@ -260,6 +334,8 @@ def parse_mail_detail(html: str, page_url: str, scan_requested: bool = False) ->
         pdf_download_url=pdf_download_url,
         location=location,
         notes=notes,
+        open_scan_action=open_scan_action,
+        archive_url=archive_url,
     )
 
 
@@ -347,7 +423,7 @@ def _extract_meta_csrf(html: str) -> str | None:
 
 
 def _extract_status(text: str) -> str | None:
-    status_words = "未開封|開封済み|スキャン済み|破棄済み|廃棄済み|転送済み|保管中|メール室|オフサイト保管"
+    status_words = "未開封|開封待ち/依頼中|開封待ち|依頼中|開封済み|スキャン済み|破棄済み|廃棄済み|転送済み|保管中|メール室|オフサイト保管"
     match = re.search(rf"ステータス\s*({status_words})", text)
     if match:
         return match.group(1)
