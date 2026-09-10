@@ -464,9 +464,9 @@ class CliTests(unittest.TestCase):
 
         mock_addr = MailingAddress(
             inbox_id="82433",
-            mail_in_address="test@pm.mailmate.jp",
-            invoice_address="test@invoice.mailmate.jp",
-            receipt_address="test@receipt.mailmate.jp",
+            mail_in_address="test@pm.example.com",
+            invoice_address="test@invoice.example.com",
+            receipt_address="test@receipt.example.com",
             japanese_address="〒 810-0001 福岡市中央区天神3-16-17",
             english_address="(ID 48713), Tenjin, Japan",
             postal_code="810-0001",
@@ -485,7 +485,7 @@ class CliTests(unittest.TestCase):
             buf = StringIO()
             with redirect_stdout(buf):
                 self.assertEqual(cmd_address(args), 0)
-            self.assertIn("test@pm.mailmate.jp", buf.getvalue())
+            self.assertIn("test@pm.example.com", buf.getvalue())
 
     def test_cmd_note_read_and_update(self):
         from mailmate_cli.cli import cmd_note

@@ -263,16 +263,16 @@ class ParserTests(unittest.TestCase):
         html = """
         <html><body>
           <input id="mail_in_address_input" value="user123.456" />
-          <div data-clipboard-text="user123.456@pm.mailmate.jp"></div>
+          <div data-clipboard-text="user123.456@pm.example.com"></div>
           <div>(ID 48713-82433), Yellow Base Tenjin 3F, 3-16-17 Tenjin, Chuo-ku, Fukuoka, Japan 810-0001</div>
           <div>〒 810-0001 福岡市中央区天神3-16-17 イエローベース天神3F (管理番号 : 48713-82433)</div>
         </body></html>
         """
         addr = parse_mailing_address(html, inbox_id="456")
         self.assertEqual(addr.inbox_id, "456")
-        self.assertEqual(addr.mail_in_address, "user123.456@pm.mailmate.jp")
-        self.assertEqual(addr.invoice_address, "user123.456@invoice.mailmate.jp")
-        self.assertEqual(addr.receipt_address, "user123.456@receipt.mailmate.jp")
+        self.assertEqual(addr.mail_in_address, "user123.456@pm.example.com")
+        self.assertEqual(addr.invoice_address, "user123.456@invoice.example.com")
+        self.assertEqual(addr.receipt_address, "user123.456@receipt.example.com")
         self.assertEqual(addr.postal_code, "810-0001")
         self.assertEqual(addr.management_id, "48713-82433")
 

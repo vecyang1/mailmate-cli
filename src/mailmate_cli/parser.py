@@ -473,12 +473,14 @@ def _looks_scan_requested(value: str) -> bool:
 
 
 def parse_mailing_address(html: str, inbox_id: str = "82433") -> MailingAddress:
-    email_m = re.search(r'data-clipboard-text=["\']([^"\']+@pm\.mailmate\.jp)["\']', html)
+    email_m = re.search(r'data-clipboard-text=["\']([^"\']+@(?:pm\.)?(?:mailmate\.jp|example\.com))["\']', html)
     email = email_m.group(1).strip() if email_m else ""
     if not email:
         input_m = re.search(r'id=["\']mail_in_address_input["\'][^>]*value=["\']([^"\']+)["\']', html)
         if input_m:
             email = f"{input_m.group(1).strip()}@pm.mailmate.jp"
+    domain = email.split("@")[1] if "@" in email else "pm.mailmate.jp"
+    base_domain = domain.split(".", 1)[1] if "." in domain else "mailmate.jp"
     prefix = email.split("@")[0] if "@" in email else ""
 
     eng_m = re.search(r'\((ID\s+[^)]+)\),\s*Yellow Base[^\n<]+', html)
@@ -494,8 +496,8 @@ def parse_mailing_address(html: str, inbox_id: str = "82433") -> MailingAddress:
     return MailingAddress(
         inbox_id=inbox_id,
         mail_in_address=email,
-        invoice_address=f"{prefix}@invoice.mailmate.jp" if prefix else "",
-        receipt_address=f"{prefix}@receipt.mailmate.jp" if prefix else "",
+        invoice_address=f"{prefix}@invoice.{base_domain}" if prefix else "",
+        receipt_address=f"{prefix}@receipt.{base_domain}" if prefix else "",
         japanese_address=jp,
         english_address=eng,
         postal_code=postal,

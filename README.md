@@ -89,7 +89,7 @@ Read mail details and extract scanned PDF document text:
 
 ```bash
 ./bin/mailmate read 216635
-./bin/mailmate read 216635 --download-dir ~/Downloads
+./bin/mailmate read 216635 --download-dir ./downloads
 ./bin/mailmate --json read 216635
 ```
 
@@ -103,7 +103,7 @@ Request open and scan for unopened mail (`未開封`):
 Download scanned PDF:
 
 ```bash
-./bin/mailmate download 216635 --output ~/Downloads/document.pdf
+./bin/mailmate download 216635 --output ./downloads/document.pdf
 ```
 
 Archive mail to clean up inbox:
@@ -156,7 +156,7 @@ Inspect and export extracted bills / invoices:
 ./bin/mailmate bills --unpaid-only
 
 # Export complete ledger to CSV
-./bin/mailmate bills --export ~/Downloads/mailmate_bills.csv
+./bin/mailmate bills --export ./downloads/mailmate_bills.csv
 ```
 
 Login or refresh the cookie jar:
