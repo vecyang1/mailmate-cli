@@ -1,5 +1,10 @@
 # Changelog
 
+## [2026-09-12] - 2026-09-12
+
+### Fixes
+- Untrack project links, virtualize test emails, fix license and path examples (`2300d85`)
+
 ## 0.9.0 - 2026-09-03
 
 - Driven by live Chrome DevTools visual and DOM tree inspection:
