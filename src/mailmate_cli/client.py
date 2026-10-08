@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import ssl
@@ -105,7 +106,10 @@ class MailMateClient:
             raise MailMateError(f"MailMate request failed: HTTP {exc.code} {url}") from exc
         except URLError as exc:
             raise MailMateError(f"MailMate request failed: {exc.reason}") from exc
-        content = response.read()
+        try:
+            content = response.read()
+        except http.client.IncompleteRead as exc:
+            content = exc.partial
         charset = response.headers.get_content_charset() or "utf-8"
         final_url = response.geturl()
         return content.decode(charset, errors="replace"), final_url
@@ -187,7 +191,10 @@ class MailMateClient:
         request = Request(url, headers=headers)
         try:
             response = self.opener.open(request, timeout=60)
-            return response.read()
+            try:
+                return response.read()
+            except http.client.IncompleteRead as exc:
+                return exc.partial
         except HTTPError as exc:
             raise MailMateError(f"PDF download failed: HTTP {exc.code} {url}") from exc
         except URLError as exc:
