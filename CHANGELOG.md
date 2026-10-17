@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.1 - 2026-10-10
+
+### Fixes
+- Handle http.client.IncompleteRead on chunked responses in Python 3.14 (`f838134`)
+
 ## [2026-09-12] - 2026-09-12
 
 ### Fixes
