@@ -2,8 +2,25 @@ from __future__ import annotations
 
 from .models import DiscardDecision, MailDetail, OpenScanDecision
 
+# Predictable debt collection, routine rent guarantee, or generic junk mail
+# where the envelope already states the sender and purpose, and opening
+# adds zero new information while incurring unnecessary scan fees and burning quota.
+SKIP_OPEN_PATTERNS = [
+    "神田お玉ヶ池",
+    "神田お玉ケ池",
+    "お玉ヶ池法律事務所",
+    "casa",
+    "株式会社casa",
+]
 
-def decide_open_scan(detail: MailDetail) -> OpenScanDecision:
+
+def is_skip_open_sender(sender: str | None, notes: str | None = None) -> bool:
+    """Return True if the sender/envelope is a known predictable notice that should not be opened."""
+    text = f"{sender or ''} {notes or ''}".lower()
+    return any(pat.lower() in text for pat in SKIP_OPEN_PATTERNS)
+
+
+def decide_open_scan(detail: MailDetail, *, force: bool = False) -> OpenScanDecision:
     """Return whether requesting an open and scan is valid and safe."""
     if detail.already_discarded:
         return OpenScanDecision(False, "already_discarded", message="Original paper is already discarded.")
@@ -19,6 +36,16 @@ def decide_open_scan(detail: MailDetail) -> OpenScanDecision:
             False,
             "not_unopened",
             message=f"Mail status is '{detail.status or 'unknown'}', not unopened.",
+        )
+
+    if not force and is_skip_open_sender(detail.sender, detail.notes):
+        return OpenScanDecision(
+            False,
+            "skip_open_known_sender",
+            message=(
+                f"Known sender '{detail.sender}' already clear without opening (debt collection / routine notice). "
+                "Opening incurs unnecessary scan fees. Pass --force to override."
+            ),
         )
 
     if not detail.open_scan_action:

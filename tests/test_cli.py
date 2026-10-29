@@ -571,6 +571,35 @@ class CliTests(unittest.TestCase):
             self.assertIn("水道局", buf.getvalue())
             self.assertIn("1,000円", buf.getvalue())
 
+    def test_cmd_audit(self):
+        from mailmate_cli.cli import cmd_audit
+        from mailmate_cli.models import InboxItem
+
+        mock_inbox = [
+            InboxItem(mail_id="101", sender="弁護士法人神田お玉ヶ池法律事務所", received_date="2026年07月01日(水)", status="未開封"),
+            InboxItem(mail_id="102", sender="日本年金機構", received_date="2026年10月28日(水)", status="未開封"),
+            InboxItem(mail_id="103", sender="茅ヶ崎市", received_date="2026年08月01日(土)", status="開封済み"),
+        ]
+        args = Namespace(
+            base_url="https://mailmate.jp",
+            cookie_jar="/tmp/mock_cookies.txt",
+            no_login=True,
+            limit=50,
+            json=True,
+            quiet=False,
+        )
+        with patch("mailmate_cli.cli._ensure_auth"), patch("mailmate_cli.cli._client") as mock_c:
+            mock_c.return_value.inbox.return_value = mock_inbox
+            buf = StringIO()
+            with redirect_stdout(buf):
+                self.assertEqual(cmd_audit(args), 0)
+            data = json.loads(buf.getvalue())
+            self.assertEqual(data["totalItems"], 3)
+            self.assertEqual(data["unopenedCount"], 2)
+            self.assertEqual(data["unopenedSkipOpenCount"], 1)
+            self.assertEqual(data["unopenedReviewOpenCount"], 1)
+            self.assertEqual(data["storageOverdueCount"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

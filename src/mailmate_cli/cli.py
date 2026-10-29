@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -46,7 +48,7 @@ from .runtime import (
     build_status_report,
     scaffold_local_setup,
 )
-from .safety import decide_discard, decide_open_scan
+from .safety import decide_discard, decide_open_scan, is_skip_open_sender
 
 
 def require_apply_confirmation(*, apply: bool, yes: bool) -> None:
@@ -115,9 +117,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     open_cmd = sub.add_parser("open", aliases=["request-scan"], help="Request MailMate staff to open and scan an unopened mail.")
     open_cmd.add_argument("mail_id", help="MailMate mail ID to open/scan.")
+    open_cmd.add_argument("--force", action="store_true", help="Force open request even for predictable debt-collection/boilerplate notices.")
     open_cmd.add_argument("--apply", action="store_true", help="Actually submit the open scan request.")
     open_cmd.add_argument("--yes", action="store_true", help="Required with --apply.")
     open_cmd.set_defaults(func=cmd_open)
+
+    audit_cmd = sub.add_parser("audit", help="Audit inbox mail for unopened fee-wasting items and physical storage aging (>30d ¥8/day fee risk).")
+    audit_cmd.add_argument("--limit", type=int, default=100, help="Max mail items to inspect (default: 100).")
+    audit_cmd.set_defaults(func=cmd_audit)
 
     download_cmd = sub.add_parser("download", help="Download the scanned PDF for a mail item.")
     download_cmd.add_argument("mail_id", help="MailMate mail ID.")
@@ -352,7 +359,7 @@ def cmd_open(args: argparse.Namespace) -> int:
     client = _client(args)
     _ensure_auth(args, client)
     detail = client.detail(args.mail_id)
-    decision = decide_open_scan(detail)
+    decision = decide_open_scan(detail, force=getattr(args, "force", False))
     applied = False
     if args.apply and decision.eligible:
         client.request_scan(args.mail_id, f"{args.base_url.rstrip('/')}/app/mails/{detail.mail_id}/view_mail")
@@ -371,6 +378,8 @@ def cmd_open(args: argparse.Namespace) -> int:
         f"{row['decision']}: mail #{row['mailId']} {row.get('sender') or ''} "
         f"status={row.get('status') or '?'} reason={row['reason']}"
     )
+    if not decision.eligible and decision.message:
+        human += f"\n  -> {decision.message}"
     _emit(args, row, human)
     return 0 if decision.eligible or not args.apply else 66
 
@@ -598,6 +607,86 @@ def cmd_bills(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_audit(args: argparse.Namespace) -> int:
+    client = _client(args)
+    _ensure_auth(args, client)
+    items = client.inbox(limit=args.limit)
+    today = dt.date.today()
+
+    audit_items = []
+    unopened_skip_count = 0
+    unopened_review_count = 0
+    storage_overdue_count = 0
+    storage_warning_count = 0
+
+    for item in items:
+        # 1. Parse date
+        d_str = item.received_date or ""
+        days_old = None
+        m = re.search(r"(\d{4})年(\d{1,2})月(\d{1,2})日", d_str)
+        if not m:
+            m = re.search(r"(\d{4})[/-](\d{1,2})[/-](\d{1,2})", d_str)
+        if m:
+            item_date = dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            days_old = (today - item_date).days
+
+        # 2. Open advice
+        is_unopened = item.status == "未開封"
+        open_advice = "ALREADY_OPENED"
+        if is_unopened:
+            if is_skip_open_sender(item.sender):
+                open_advice = "SKIP_OPEN"
+                unopened_skip_count += 1
+            elif any(g in (item.sender or "") for g in ["年金", "市役所", "市より", "区役所", "税務署", "健康保険"]):
+                open_advice = "REVIEW_OPEN"
+                unopened_review_count += 1
+            else:
+                open_advice = "CHECK"
+
+        # 3. Storage aging (standard room 30-day limit, ¥8/day fee)
+        storage_risk = "OK"
+        overdue_days = 0
+        if days_old is not None:
+            if days_old > 30:
+                storage_risk = "OVERDUE_FEE_ACCRUING"
+                overdue_days = days_old - 30
+                storage_overdue_count += 1
+            elif days_old >= 20:
+                storage_risk = "WARNING_APPROACHING_30D"
+                storage_warning_count += 1
+
+        audit_items.append({
+            "mailId": item.mail_id,
+            "sender": item.sender,
+            "receivedDate": item.received_date,
+            "status": item.status,
+            "daysInStorage": days_old,
+            "openAdvice": open_advice,
+            "storageRisk": storage_risk,
+            "overdueDays": overdue_days,
+            "dailyStorageFeeYen": 8 if storage_risk == "OVERDUE_FEE_ACCRUING" else 0,
+        })
+
+    summary = {
+        "totalItems": len(items),
+        "unopenedCount": sum(1 for it in audit_items if it["status"] == "未開封"),
+        "unopenedSkipOpenCount": unopened_skip_count,
+        "unopenedReviewOpenCount": unopened_review_count,
+        "storageOverdueCount": storage_overdue_count,
+        "storageWarningCount": storage_warning_count,
+        "currentDailyBurnYen": storage_overdue_count * 8,
+        "estimatedMonthlyBurnYen": storage_overdue_count * 8 * 30,
+        "recommendations": [
+            f"1. 发现 {unopened_skip_count} 件已知催收/例行函件（神田お玉ヶ池法律事務所 / Casa），已标记为【无需开封】（阻断额外开封扫描费与配额损耗）。",
+            f"2. 发现 {storage_overdue_count} 件实体信件已存放超 30 天，当前正在以 ¥8/天（约 ¥{storage_overdue_count * 240}/月）产生滞留保管费！建议针对已读信件批量破弃（mailmate abandon / Web 破棄）或转为离线存储（¥1/天）。",
+        ],
+        "items": audit_items,
+    }
+
+    _emit(args, summary, _human_audit(summary))
+    return 0
+
+
 def cmd_login(args: argparse.Namespace) -> int:
     credentials = _credentials(args)
     if credentials is None:
@@ -794,6 +883,45 @@ def _human_row(row: dict[str, object]) -> str:
         f"{row['decision']}: mail #{row['mailId']} {row.get('sender') or ''} "
         f"status={row.get('status') or '?'} reason={row['reason']}"
     ).strip()
+
+
+def _human_audit(summary: dict[str, object]) -> str:
+    total = summary["totalItems"]
+    unopened = summary["unopenedCount"]
+    skip_open = summary["unopenedSkipOpenCount"]
+    review_open = summary["unopenedReviewOpenCount"]
+    overdue = summary["storageOverdueCount"]
+    daily_burn = summary["currentDailyBurnYen"]
+    monthly_burn = summary["estimatedMonthlyBurnYen"]
+
+    lines = [
+        "=" * 88,
+        "MailMate Inbox Audit: Unopened Optimization & Storage Fee Defense",
+        "=" * 88,
+        f"Total Mails:        {total}",
+        f"Unopened Mails:     {unopened} (Skip-Open: {skip_open}, Review-Open: {review_open}, Other: {unopened - skip_open - review_open})",
+        f"Storage >30d:       {overdue} items incurring ¥8/day fee penalty",
+        f"Current Burn Rate:  ¥{daily_burn:,}/day (≈ ¥{monthly_burn:,}/month)",
+        "-" * 88,
+        "Actionable Recommendations:",
+    ]
+    for rec in summary.get("recommendations", []):
+        lines.append(f"  • {rec}")
+    lines.extend([
+        "-" * 88,
+        f"{'ID':<8} {'DAYS':<6} {'STATUS':<10} {'OPEN ADVICE':<14} {'STORAGE RISK':<22} {'SENDER'}",
+        "-" * 88,
+    ])
+    for item in summary.get("items", []):
+        m_id = str(item["mailId"])
+        days = f"{item['daysInStorage']}d" if item.get("daysInStorage") is not None else "-"
+        st = str(item.get("status") or "-")
+        advice = str(item.get("openAdvice") or "-")
+        risk = str(item.get("storageRisk") or "-")
+        sender = str(item.get("sender") or "")
+        lines.append(f"{m_id:<8} {days:<6} {st:<10} {advice:<14} {risk:<22} {sender}")
+    lines.append("=" * 88)
+    return "\n".join(lines)
 
 
 def _human_list(rows: list[dict[str, object]]) -> str:

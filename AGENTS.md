@@ -8,8 +8,9 @@ Runs locally against MailMate session cookies, with no external server or teleme
 ## Available Surfaces
 
 - `mailmate list [--search Q] [--filter F] [--tag T] [--status S] [--unread-only]`: list inbox postal items.
+- `mailmate audit [--limit N]`: audit unopened items for skip/open recommendation and physical storage fee aging (>30d ¥8/day fee penalty).
 - `mailmate read <id> [--download-dir D] [--text]`: read metadata, attached scans, and OCR text.
-- `mailmate open <id> [--apply --yes]`: request staff to open and scan unopened mail (dry-run by default).
+- `mailmate open <id> [--force] [--apply --yes]`: request staff to open and scan unopened mail (dry-run by default; blocks predictable debt-collection notices unless --force).
 - `mailmate download <id> [--output PATH]`: download scanned multi-page PDF.
 - `mailmate archive <id> [--apply --yes]`: archive processed mail.
 - `mailmate mark-bill / mark-receipt / mark-unread <id> [--apply --yes]`: fast triage tags.

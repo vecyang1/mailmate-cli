@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.0 - 2026-10-29
+
+### Added
+- `audit` command (`mailmate audit`): audits mailbox for unopened items with automated open/skip classification and physical storage aging analysis (>30-day ¥8/day fee penalty).
+- `SKIP_OPEN_PATTERNS` & `is_skip_open_sender` safety policy: blocks automated/accidental `open` requests for predictable debt-collection, routine rent-guarantee notices (`弁護士法人神田お玉ヶ池法律事務所`, `株式会社Casa`) where the envelope already states the sender and purpose, preventing unnecessary scanning fees.
+- `--force` flag on `open` command to override the `skip_open_known_sender` safety guard when explicitly requested.
+- Symlink resolution in `bin/mailmate` allowing global PATH execution from `~/.local/bin/mailmate`.
+
 ## 0.9.1 - 2026-10-10
 
 ### Fixes

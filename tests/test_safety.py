@@ -152,6 +152,46 @@ class SafetyTests(unittest.TestCase):
         self.assertFalse(decision.eligible)
         self.assertEqual(decision.reason, "already_discarded")
 
+    def test_decide_open_scan_blocks_skip_open_sender_without_force(self):
+        open_action = OpenScanAction(method="POST", url="https://mailmate.jp/app/mails/210080/open_mail")
+        detail = MailDetail(
+            mail_id="210080",
+            sender="弁護士法人神田お玉ヶ池法律事務所",
+            status="未開封",
+            received_date="2026年07月09日(木)",
+            scan_missing=True,
+            scan_requested=False,
+            has_digital_copy=False,
+            already_discarded=False,
+            open_scan_action=open_action,
+        )
+
+        decision = decide_open_scan(detail, force=False)
+
+        self.assertFalse(decision.eligible)
+        self.assertEqual(decision.reason, "skip_open_known_sender")
+        self.assertIn("already clear without opening", decision.message)
+
+    def test_decide_open_scan_permits_skip_open_sender_with_force(self):
+        open_action = OpenScanAction(method="POST", url="https://mailmate.jp/app/mails/210080/open_mail")
+        detail = MailDetail(
+            mail_id="210080",
+            sender="弁護士法人神田お玉ヶ池法律事務所",
+            status="未開封",
+            received_date="2026年07月09日(木)",
+            scan_missing=True,
+            scan_requested=False,
+            has_digital_copy=False,
+            already_discarded=False,
+            open_scan_action=open_action,
+        )
+
+        decision = decide_open_scan(detail, force=True)
+
+        self.assertTrue(decision.eligible)
+        self.assertEqual(decision.reason, "eligible")
+        self.assertEqual(decision.action, open_action)
+
 
 if __name__ == "__main__":
     unittest.main()

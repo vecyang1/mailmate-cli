@@ -1,4 +1,10 @@
 #!/usr/bin/env sh
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-PROJECT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+TARGET="$0"
+while [ -L "$TARGET" ]; do
+  DIR=$(cd -P "$(dirname "$TARGET")" >/dev/null 2>&1 && pwd)
+  TARGET=$(readlink "$TARGET")
+  [ "${TARGET#/}" = "$TARGET" ] && TARGET="$DIR/$TARGET"
+done
+SCRIPT_DIR=$(cd -P "$(dirname "$TARGET")" >/dev/null 2>&1 && pwd)
+PROJECT_DIR=$(cd -P "$SCRIPT_DIR/.." >/dev/null 2>&1 && pwd)
 PYTHONPATH="$PROJECT_DIR/src${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m mailmate_cli "$@"
