@@ -600,6 +600,34 @@ class CliTests(unittest.TestCase):
             self.assertEqual(data["unopenedReviewOpenCount"], 1)
             self.assertEqual(data["storageOverdueCount"], 2)
 
+    def test_target_items_min_days(self):
+        from mailmate_cli.cli import _target_items
+        from mailmate_cli.models import InboxItem
+        import datetime as dt
+
+        d_today = dt.date.today()
+        d_25_days_ago = d_today - dt.timedelta(days=25)
+        d_5_days_ago = d_today - dt.timedelta(days=5)
+
+        items = [
+            InboxItem(mail_id="1", sender="A", received_date=f"{d_25_days_ago.year}年{d_25_days_ago.month:02d}月{d_25_days_ago.day:02d}日", status="開封済み"),
+            InboxItem(mail_id="2", sender="B", received_date=f"{d_5_days_ago.year}年{d_5_days_ago.month:02d}月{d_5_days_ago.day:02d}日", status="開封済み"),
+        ]
+
+        # No filter
+        args_all = Namespace(mail_id=[], sender_contains=None, min_days=None)
+        self.assertEqual(len(_target_items(items, args_all)), 2)
+
+        # Min 20 days
+        args_20 = Namespace(mail_id=[], sender_contains=None, min_days=20)
+        res_20 = _target_items(items, args_20)
+        self.assertEqual(len(res_20), 1)
+        self.assertEqual(res_20[0].mail_id, "1")
+
+        # Min 30 days
+        args_30 = Namespace(mail_id=[], sender_contains=None, min_days=30)
+        self.assertEqual(len(_target_items(items, args_30)), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

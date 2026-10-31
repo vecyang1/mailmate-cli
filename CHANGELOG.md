@@ -3,6 +3,7 @@
 ## 0.11.0 - 2026-10-31
 
 ### Added
+- Added `--min-days <INT>` flag to `sweep` command and `_target_items`: enables proactive discarding of scanned mail items before threshold expiry (e.g. discard at 23 days to stay 7 days ahead of fee penalties).
 - Enhanced `cmd_audit` and console reporting with 20-30 day proactive storage buffer warnings (`Storage 20-30d`) and specific mail IDs to prevent overdue penalties before 30-day threshold expiry.
 - Added `--force` flag to `abandon` and `sweep` commands: allows discarding unopened or disputed mails when explicitly instructed.
 - Added `--filter` flag to `sweep` command: supports targeted batch sweeping matching MailMate web filters (e.g. `in_paid_storage`).

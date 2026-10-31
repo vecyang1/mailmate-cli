@@ -220,6 +220,7 @@ def build_parser() -> argparse.ArgumentParser:
     sweep.add_argument("--sender-contains", default=None)
     sweep.add_argument("--mail-id", action="append", default=[])
     sweep.add_argument("--force", action="store_true", help="Force discard even for unopened/unscanned mail items.")
+    sweep.add_argument("--min-days", type=int, default=None, help="Target only mail items stored for at least this many days (e.g. 23 to discard 7 days before fee threshold).")
     sweep.add_argument("--apply", action="store_true")
     sweep.add_argument("--yes", action="store_true")
     sweep.set_defaults(func=cmd_sweep)
@@ -633,14 +634,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
 
     for item in items:
         # 1. Parse date
-        d_str = item.received_date or ""
-        days_old = None
-        m = re.search(r"(\d{4})年(\d{1,2})月(\d{1,2})日", d_str)
-        if not m:
-            m = re.search(r"(\d{4})[/-](\d{1,2})[/-](\d{1,2})", d_str)
-        if m:
-            item_date = dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-            days_old = (today - item_date).days
+        days_old = _parse_days_in_storage(item.received_date, today)
 
         # 2. Open advice
         is_unopened = item.status == "未開封"
@@ -700,7 +694,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
             if it["storageRisk"] == "WARNING_APPROACHING_30D"
         )
         recommendations.append(
-            f"3. 发现 {storage_warning_count} 件实体信件已存放 20~30 天（临近 30 天免费期上限）：{warning_items_desc}。建议超期前及时查验或破弃，防范产生新增滞留费！"
+            f"3. 发现 {storage_warning_count} 件实体信件已存放 20~30 天（临近 30 天免费期上限）：{warning_items_desc}。建议超期前及时查验，并执行 `mailmate sweep --min-days 20 --apply --yes` 提前破弃已读原件，彻底阻断滞留费！"
         )
 
     summary = {
@@ -866,14 +860,32 @@ def _run_config_to_args(config: RunConfig, args: argparse.Namespace) -> argparse
     )
 
 
+def _parse_days_in_storage(received_date: str | None, today: dt.date | None = None) -> int | None:
+    if not received_date:
+        return None
+    today = today or dt.date.today()
+    m = re.search(r"(\d{4})年(\d{1,2})月(\d{1,2})日", received_date)
+    if not m:
+        m = re.search(r"(\d{4})[/-](\d{1,2})[/-](\d{1,2})", received_date)
+    if m:
+        item_date = dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        return (today - item_date).days
+    return None
+
+
 def _target_items(items: Iterable[InboxItem], args: argparse.Namespace) -> list[InboxItem]:
     wanted_ids = set(args.mail_id or [])
+    min_days = getattr(args, "min_days", None)
     output = []
     for item in items:
         if wanted_ids and item.mail_id not in wanted_ids:
             continue
         if args.sender_contains and not _matches_any_sender(item.sender, args.sender_contains):
             continue
+        if min_days is not None:
+            days = _parse_days_in_storage(item.received_date)
+            if days is None or days < min_days:
+                continue
         output.append(item)
     return output
 
