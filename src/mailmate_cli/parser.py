@@ -24,7 +24,7 @@ SCAN_PENDING_TERMS = (
     "開封待ち",
     "開封スキャン依頼",
 )
-DISCARDED_TERMS = ("破棄済み", "廃棄済み", "discarded", "disposed")
+DISCARDED_TERMS = ("破棄済み", "廃棄済み", "破棄依頼済み", "discarded", "disposed")
 SCANNED_TERMS = ("開封済み", "スキャン済み", "opened", "scanned")
 
 

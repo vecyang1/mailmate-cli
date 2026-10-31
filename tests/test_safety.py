@@ -25,6 +25,26 @@ class SafetyTests(unittest.TestCase):
         self.assertFalse(decision.eligible)
         self.assertEqual(decision.reason, "scan_pending")
 
+    def test_unopened_eligible_when_force_true(self):
+        action = DiscardAction(method="PATCH", url="https://mailmate.jp/app/mails/199671/discard")
+        detail = MailDetail(
+            mail_id="199671",
+            sender="株式会社Casa",
+            status="未開封",
+            received_date="2026年06月01日(月)",
+            scan_missing=True,
+            scan_requested=False,
+            has_digital_copy=False,
+            already_discarded=False,
+            discard_actions=[action],
+        )
+
+        decision = decide_discard(detail, force=True)
+
+        self.assertTrue(decision.eligible)
+        self.assertEqual(decision.reason, "eligible")
+        self.assertEqual(decision.action, action)
+
     def test_already_discarded_is_skipped(self):
         detail = MailDetail(
             mail_id="199671",

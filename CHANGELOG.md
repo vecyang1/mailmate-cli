@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.11.0 - 2026-10-31
+
+### Added
+- Added `--force` flag to `abandon` and `sweep` commands: allows discarding unopened or disputed mails when explicitly instructed.
+- Added `--filter` flag to `sweep` command: supports targeted batch sweeping matching MailMate web filters (e.g. `in_paid_storage`).
+- Recognized `破棄依頼済み` term in parser `DISCARDED_TERMS` to accurately track in-flight shredding status.
+- Integrated MailMate server-side filters (`in_paid_storage`, `shredded`) into `cmd_audit` to reflect ground-truth billing state and burn rate accurately.
+- Configured and live-verified weekly automated audit cadence `CAD-20261031-mailmate-storage-defense-cadence` (`0 9 * * 1`) under `scheduled-task-rescheduler`.
+
+### Fixed
+- Fixed `FakeClient.inbox` compatibility in test harness when passing optional `filter_name`.
+
 ## 0.10.0 - 2026-10-29
 
 ### Added

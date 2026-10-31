@@ -208,6 +208,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     abandon = sub.add_parser("abandon", help="Safely discard one paper original if already scanned.")
     abandon.add_argument("mail_id")
+    abandon.add_argument("--force", action="store_true", help="Force discard even if unopened/unscanned.")
     abandon.add_argument("--apply", action="store_true", help="Actually submit the discard action.")
     abandon.add_argument("--yes", action="store_true", help="Required with --apply.")
     abandon.set_defaults(func=cmd_abandon)
@@ -215,8 +216,10 @@ def build_parser() -> argparse.ArgumentParser:
     sweep = sub.add_parser("sweep", help="Inspect inbox mail and discard eligible scanned originals.")
     sweep.add_argument("--inbox-id", default="82433")
     sweep.add_argument("--limit", type=int, default=20)
+    sweep.add_argument("--filter", default=None, help="Filter by mail status (e.g. in_paid_storage, unopened, all).")
     sweep.add_argument("--sender-contains", default=None)
     sweep.add_argument("--mail-id", action="append", default=[])
+    sweep.add_argument("--force", action="store_true", help="Force discard even for unopened/unscanned mail items.")
     sweep.add_argument("--apply", action="store_true")
     sweep.add_argument("--yes", action="store_true")
     sweep.set_defaults(func=cmd_sweep)
@@ -613,6 +616,15 @@ def cmd_audit(args: argparse.Namespace) -> int:
     items = client.inbox(limit=args.limit)
     today = dt.date.today()
 
+    shredded_ids: set[str] = set()
+    paid_storage_ids: set[str] | None = None
+    if isinstance(client, MailMateClient):
+        try:
+            shredded_ids = {it.mail_id for it in client.inbox(limit=100, filter_name="shredded")}
+            paid_storage_ids = {it.mail_id for it in client.inbox(limit=100, filter_name="in_paid_storage")}
+        except Exception:
+            pass
+
     audit_items = []
     unopened_skip_count = 0
     unopened_review_count = 0
@@ -646,7 +658,17 @@ def cmd_audit(args: argparse.Namespace) -> int:
         # 3. Storage aging (standard room 30-day limit, ¥8/day fee)
         storage_risk = "OK"
         overdue_days = 0
-        if days_old is not None:
+        if item.mail_id in shredded_ids:
+            storage_risk = "SHREDDED"
+        elif paid_storage_ids is not None:
+            if item.mail_id in paid_storage_ids:
+                storage_risk = "OVERDUE_FEE_ACCRUING"
+                overdue_days = max(1, (days_old - 30) if days_old and days_old > 30 else 1)
+                storage_overdue_count += 1
+            elif days_old is not None and 20 <= days_old <= 30:
+                storage_risk = "WARNING_APPROACHING_30D"
+                storage_warning_count += 1
+        elif days_old is not None:
             if days_old > 30:
                 storage_risk = "OVERDUE_FEE_ACCRUING"
                 overdue_days = days_old - 30
@@ -756,7 +778,7 @@ def cmd_abandon(args: argparse.Namespace) -> int:
     client = _client(args)
     _ensure_auth(args, client)
     detail = client.detail(args.mail_id)
-    decision = decide_discard(detail)
+    decision = decide_discard(detail, force=getattr(args, "force", False))
     applied = False
     if args.apply and decision.eligible and decision.action:
         client.submit_discard(decision.action, f"{args.base_url.rstrip('/')}/app/mails/{detail.mail_id}/view_mail")
@@ -803,11 +825,17 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def _sweep_rows(client: MailMateClient, args: argparse.Namespace) -> list[dict[str, object]]:
-    items = _target_items(client.inbox(args.inbox_id, limit=args.limit), args)
+    filter_name = getattr(args, "filter", None)
+    if filter_name:
+        raw_items = client.inbox(args.inbox_id, limit=args.limit, filter_name=filter_name)
+    else:
+        raw_items = client.inbox(args.inbox_id, limit=args.limit)
+    items = _target_items(raw_items, args)
     rows: list[dict[str, object]] = []
+    force = getattr(args, "force", False)
     for item in items:
         detail = client.detail(item.mail_id, scan_requested=item.scan_requested)
-        decision = decide_discard(detail)
+        decision = decide_discard(detail, force=force)
         applied = False
         if args.apply and decision.eligible and decision.action:
             client.submit_discard(decision.action, f"{args.base_url.rstrip('/')}/app/mails/{detail.mail_id}/view_mail")

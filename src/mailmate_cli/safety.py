@@ -59,25 +59,26 @@ def decide_open_scan(detail: MailDetail, *, force: bool = False) -> OpenScanDeci
     )
 
 
-def decide_discard(detail: MailDetail) -> DiscardDecision:
+def decide_discard(detail: MailDetail, *, force: bool = False) -> DiscardDecision:
     """Return whether discarding the paper original is safe enough to automate."""
     if detail.already_discarded:
         return DiscardDecision(False, "already_discarded", message="Original paper is already discarded.")
 
-    if detail.scan_missing or detail.status in {"未開封", "開封待ち", "開封待ち/依頼中"}:
-        reason = "scan_pending" if detail.scan_requested else "not_scanned"
-        return DiscardDecision(
-            False,
-            reason,
-            message="Digital copy is not verified yet; red-dot scan requests are treated as pending.",
-        )
+    if not force:
+        if detail.scan_missing or detail.status in {"未開封", "開封待ち", "開封待ち/依頼中"}:
+            reason = "scan_pending" if detail.scan_requested else "not_scanned"
+            return DiscardDecision(
+                False,
+                reason,
+                message="Digital copy is not verified yet; red-dot scan requests are treated as pending. Pass --force to override.",
+            )
 
-    if not detail.has_digital_copy:
-        return DiscardDecision(
-            False,
-            "digital_copy_not_verified",
-            message="The page does not prove that a scanned/digital copy exists.",
-        )
+        if not detail.has_digital_copy:
+            return DiscardDecision(
+                False,
+                "digital_copy_not_verified",
+                message="The page does not prove that a scanned/digital copy exists. Pass --force to override.",
+            )
 
     if not detail.discard_actions:
         return DiscardDecision(False, "no_discard_action", message="No discard form/link was found.")

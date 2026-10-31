@@ -13,6 +13,7 @@ audit.jsonl
 com.vec.mailmate-cli.run.plist
 
 # Local private files and indices
+.run/
 graphify-out/
 PROJECT_LINKS.md
 VAULT.md
