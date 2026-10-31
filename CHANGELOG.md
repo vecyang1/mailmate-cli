@@ -3,6 +3,7 @@
 ## 0.11.0 - 2026-10-31
 
 ### Added
+- Enhanced `cmd_audit` and console reporting with 20-30 day proactive storage buffer warnings (`Storage 20-30d`) and specific mail IDs to prevent overdue penalties before 30-day threshold expiry.
 - Added `--force` flag to `abandon` and `sweep` commands: allows discarding unopened or disputed mails when explicitly instructed.
 - Added `--filter` flag to `sweep` command: supports targeted batch sweeping matching MailMate web filters (e.g. `in_paid_storage`).
 - Recognized `破棄依頼済み` term in parser `DISCARDED_TERMS` to accurately track in-flight shredding status.

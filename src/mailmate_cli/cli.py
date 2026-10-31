@@ -689,6 +689,20 @@ def cmd_audit(args: argparse.Namespace) -> int:
             "dailyStorageFeeYen": 8 if storage_risk == "OVERDUE_FEE_ACCRUING" else 0,
         })
 
+    recommendations = [
+        f"1. 发现 {unopened_skip_count} 件已知催收/例行函件（神田お玉ヶ池法律事務所 / Casa），已标记为【无需开封】（阻断额外开封扫描费与配额损耗）。",
+        f"2. 发现 {storage_overdue_count} 件实体信件已存放超 30 天，当前正在以 ¥8/天（约 ¥{storage_overdue_count * 240}/月）产生滞留保管费！建议针对已读信件批量破弃（mailmate abandon / Web 破棄）或转为离线存储（¥1/天）。",
+    ]
+    if storage_warning_count > 0:
+        warning_items_desc = ", ".join(
+            f"#{it['mailId']}(已存{it['daysInStorage']}天/{it['sender']})"
+            for it in audit_items
+            if it["storageRisk"] == "WARNING_APPROACHING_30D"
+        )
+        recommendations.append(
+            f"3. 发现 {storage_warning_count} 件实体信件已存放 20~30 天（临近 30 天免费期上限）：{warning_items_desc}。建议超期前及时查验或破弃，防范产生新增滞留费！"
+        )
+
     summary = {
         "totalItems": len(items),
         "unopenedCount": sum(1 for it in audit_items if it["status"] == "未開封"),
@@ -698,10 +712,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
         "storageWarningCount": storage_warning_count,
         "currentDailyBurnYen": storage_overdue_count * 8,
         "estimatedMonthlyBurnYen": storage_overdue_count * 8 * 30,
-        "recommendations": [
-            f"1. 发现 {unopened_skip_count} 件已知催收/例行函件（神田お玉ヶ池法律事務所 / Casa），已标记为【无需开封】（阻断额外开封扫描费与配额损耗）。",
-            f"2. 发现 {storage_overdue_count} 件实体信件已存放超 30 天，当前正在以 ¥8/天（约 ¥{storage_overdue_count * 240}/月）产生滞留保管费！建议针对已读信件批量破弃（mailmate abandon / Web 破棄）或转为离线存储（¥1/天）。",
-        ],
+        "recommendations": recommendations,
         "items": audit_items,
     }
 
@@ -919,6 +930,7 @@ def _human_audit(summary: dict[str, object]) -> str:
     skip_open = summary["unopenedSkipOpenCount"]
     review_open = summary["unopenedReviewOpenCount"]
     overdue = summary["storageOverdueCount"]
+    warning_count = summary.get("storageWarningCount", 0)
     daily_burn = summary["currentDailyBurnYen"]
     monthly_burn = summary["estimatedMonthlyBurnYen"]
 
@@ -929,6 +941,7 @@ def _human_audit(summary: dict[str, object]) -> str:
         f"Total Mails:        {total}",
         f"Unopened Mails:     {unopened} (Skip-Open: {skip_open}, Review-Open: {review_open}, Other: {unopened - skip_open - review_open})",
         f"Storage >30d:       {overdue} items incurring ¥8/day fee penalty",
+        f"Storage 20-30d:     {warning_count} items approaching 30d threshold (action needed soon)",
         f"Current Burn Rate:  ¥{daily_burn:,}/day (≈ ¥{monthly_burn:,}/month)",
         "-" * 88,
         "Actionable Recommendations:",
