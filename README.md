@@ -73,6 +73,14 @@ Initialize and inspect status for a specific profile:
 
 ## Commands
 
+Audit inbox mail, unopened classification & physical storage fee defense:
+
+```bash
+# Audit mailbox storage aging (>30d penalty, 20-30d buffer warning) and burn rate
+./bin/mailmate audit
+./bin/mailmate --json audit
+```
+
 List inbox mail from `https://mailmate.jp/app/mails`:
 
 ```bash
@@ -280,6 +288,15 @@ Apply the inbox sweep:
 
 ```bash
 ./bin/mailmate --quiet sweep --inbox-id 12345 --sender-contains "Example Sender" --limit 20 --apply --yes
+
+# Proactively sweep mail items stored >= 23 days (7 days before fee penalty)
+./bin/mailmate sweep --min-days 23 --apply --yes
+
+# Sweep only mail currently in paid storage (>30 days penalty accrued)
+./bin/mailmate sweep --filter in_paid_storage --apply --yes
+
+# Force discard unopened/unscanned items when explicitly instructed
+./bin/mailmate sweep --filter in_paid_storage --force --apply --yes
 ```
 
 ## Exit Codes
