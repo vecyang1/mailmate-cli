@@ -1,5 +1,10 @@
 # Changelog
 
+## [2026-11-04] - 2026-11-04
+
+### Documentation
+- Document audit, min-days filter, force discard, and proactive storage defense cadence (`062bb15`)
+
 ## 0.11.0 - 2026-10-31
 
 ### Added
