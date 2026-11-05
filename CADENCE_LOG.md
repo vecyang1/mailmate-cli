@@ -1,7 +1,7 @@
 # Cadence Execution Log (周期任务运行与共建底册)
 
 > **SSOT Invariant**: Durable file-first execution history surviving session FIFO eviction.
-> **Execution Root**: `/Users/vecsatfoxmailcom/Documents/A-coding/26.06.22-mailmate-cli`
+> **Execution Root**: `./`
 
 ---
 
