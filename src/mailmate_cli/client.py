@@ -6,6 +6,7 @@ import os
 import ssl
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from http.cookiejar import MozillaCookieJar
 from pathlib import Path
@@ -100,12 +101,23 @@ class MailMateClient:
             headers["Content-Type"] = "application/x-www-form-urlencoded"
             headers["Origin"] = self.base_url
         request = Request(url, data=body, method=method.upper(), headers=headers)
-        try:
-            response = self.opener.open(request, timeout=30)
-        except HTTPError as exc:
-            raise MailMateError(f"MailMate request failed: HTTP {exc.code} {url}") from exc
-        except URLError as exc:
-            raise MailMateError(f"MailMate request failed: {exc.reason}") from exc
+        max_attempts = 3
+        response = None
+        for attempt in range(max_attempts):
+            try:
+                response = self.opener.open(request, timeout=30)
+                break
+            except HTTPError as exc:
+                if exc.code in {502, 503, 504} and attempt < max_attempts - 1:
+                    time.sleep(1.0 * (attempt + 1))
+                    continue
+                raise MailMateError(f"MailMate request failed: HTTP {exc.code} {url}") from exc
+            except (URLError, ssl.SSLError, http.client.RemoteDisconnected, TimeoutError) as exc:
+                if attempt < max_attempts - 1:
+                    time.sleep(1.0 * (attempt + 1))
+                    continue
+                reason = getattr(exc, "reason", str(exc))
+                raise MailMateError(f"MailMate request failed: {reason}") from exc
         try:
             content = response.read()
         except http.client.IncompleteRead as exc:

@@ -1,5 +1,14 @@
 # Changelog
 
+## [2026-11-07] - 2026-11-07
+
+### Added
+- Resilient retry loop in `MailMateClient.request`: exponential backoff (up to 3 attempts) handling transient SSL EOF (`UNEXPECTED_EOF_WHILE_READING`), URLError, and gateway errors (502/503/504) during unattended background sweeps.
+
+### Maintenance
+- Auto-sanitize privacy files and local paths (`7082230`)
+- Record 2026-11-05 storage defense run receipt (`545c6ad`)
+
 ## [2026-11-04] - 2026-11-04
 
 ### Documentation
