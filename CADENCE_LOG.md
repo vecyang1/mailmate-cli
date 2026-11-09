@@ -17,3 +17,7 @@
 - **Summary**: 现场处置 226492、227100 完成破弃止血；超期滞留件归零(0件)，日燃耗保持 ¥0/天
 - **Metrics**: overdue_items=0,warning_items=0,burn_rate_daily_yen=0
 
+## [2026-11-09 09:04:23] [SUCCESS] - MailMate 实体信箱滞留费防御与每周巡检 (`CAD-20261031-mailmate-storage-defense-cadence`)
+- **Summary**: 完成例行巡检：超期滞留件归零(¥0/天)；针对存放21天临期年金信件#228279提前发起开封扫描申请，状态已转为開封待ち/依頼中
+- **Metrics**: overdue_items=0,warning_items=1,burn_rate_daily_yen=0,unopened_items=18
+
