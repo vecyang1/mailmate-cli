@@ -21,3 +21,8 @@
 - **Summary**: 完成例行巡检：超期滞留件归零(¥0/天)；针对存放21天临期年金信件#228279提前发起开封扫描申请，状态已转为開封待ち/依頼中
 - **Metrics**: overdue_items=0,warning_items=1,burn_rate_daily_yen=0,unopened_items=18
 
+## [2026-11-12 03:40:39] [SUCCESS] - MailMate 实体信箱滞留费防御与每周巡检 (`CAD-20261031-mailmate-storage-defense-cadence`)
+- **Summary**: 超期滞留件持续归零(0件)，日燃耗保持 ¥0/天；已对存放24天年金信件#228279完成提前破弃(SHREDDED)；对存放21天年金信件#229212完成开封提速申请(開封待ち/依頼中)
+- **Metrics**: overdue_items=0,warning_items=1,burn_rate_daily_yen=0,unopened_items=18,discarded_items=1,accelerated_items=1
+- **Artifacts / Files**: [`reports/runs/2026-11-12.md`](reports/runs/2026-11-12.md)
+

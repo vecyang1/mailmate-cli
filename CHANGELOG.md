@@ -1,5 +1,18 @@
 # Changelog
 
+## [2026-11-12] - 2026-11-12
+
+### Maintenance
+- Enforce storage defense cadence: shred #228279 and expedite open #229212 (`CAD-20261031-mailmate-storage-defense-cadence`)
+
+## [2026-11-10] - 2026-11-10
+
+### Documentation
+- Enrich 2026-11-09 execution receipt with audit evidence (`e8c9d38`)
+
+### Maintenance
+- Record storage defense cadence run for 2026-11-09 (`6fc0987`)
+
 ## [2026-11-07] - 2026-11-07
 
 ### Added
